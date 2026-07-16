@@ -1,16 +1,16 @@
 {
-    "Summary": "VLM CLFTv2-Base LIDAR - annotation_swin_discovery (Swin filtering + confirmed discovery) [LLaVA-1.6-34B]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_limits_fixed_discovery (triage with both limitation fixes + confirmed discovery) [LLaVA-1.6-34B]",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
-        "LIDAR",
-        "annotation_swin_discovery",
+        "CrossFusion",
+        "annotation_limits_fixed_discovery",
         "llava_34b"
     ],
     "CLI": {
         "backbone": "swin_fusion",
-        "mode": "lidar",
+        "mode": "cross_fusion",
         "path": "/run/media/tom/ml/zod_temp/"
     },
     "General": {
@@ -26,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/llava/swin_discovery_lidar"
+        "logdir": "logs/vlm/clftv2-base/llava/limits_fixed_discovery_fusion"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",
@@ -63,7 +63,7 @@
         "dataset_root": "/run/media/tom/ml/zod_temp",
         "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
         "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
-        "annotation_path": "vlm/llava_34b/annotation_swin_discovery",
+        "annotation_path": "vlm/llava_34b/annotation_limits_fixed_discovery_ccm",
         "dataset_classes": [
             {
                 "name": "background",

@@ -1,11 +1,12 @@
 {
-    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_swin_discovery (Swin filtering + confirmed discovery)",
+    "Summary": "VLM CLFTv2-Base CrossFusion - Swin filtering + LLaVA-confirmed discovery, exact CC masks [LLaVA-1.6-34B]",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
         "CrossFusion",
-        "annotation_swin_discovery"
+        "annotation_swin_only_discovery_ccm",
+        "llava_34b"
     ],
     "CLI": {
         "backbone": "swin_fusion",
@@ -25,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/qwen/swin_discovery_fusion"
+        "logdir": "logs/vlm/clftv2-base/llava/swin_discovery_ccm_fusion"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",
@@ -62,7 +63,7 @@
         "dataset_root": "/run/media/tom/ml/zod_temp",
         "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
         "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
-        "annotation_path": "vlm/qwen2.5vl_72b/annotation_swin_discovery",
+        "annotation_path": "vlm/llava_34b/annotation_swin_only_discovery_ccm",
         "dataset_classes": [
             {
                 "name": "background",

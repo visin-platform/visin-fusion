@@ -263,16 +263,28 @@ def load_checkpoint_if_resume(config, model, optimizer, device):
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description='Swin Transformer Fusion Training')
-    parser.add_argument('-c', '--config', type=str, required=False, 
+    parser.add_argument('-c', '--config', type=str, required=False,
                        default='config.json', help='Path to config file')
+    parser.add_argument('--seed', type=int, default=None,
+                       help='Override General.seed and append _seed<N> to the logdir '
+                            '(for multi-seed replication runs)')
     args = parser.parse_args()
-    
+
     # Load configuration
     with open(args.config, 'r') as f:
         config = json.load(f)
-    
-    # Set random seed
-    np.random.seed(config['General']['seed'])
+
+    if args.seed is not None:
+        config['General']['seed'] = args.seed
+        config['Log']['logdir'] = config['Log']['logdir'].rstrip('/') + f'_seed{args.seed}'
+        print(f"Seed override: {args.seed}  ->  logdir {config['Log']['logdir']}")
+
+    # Set random seed (numpy AND torch — torch was previously unseeded, so each
+    # pre-existing run corresponds to one arbitrary torch draw)
+    seed = config['General']['seed']
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     
     # Set multiprocessing
     multiprocessing.set_start_method('spawn', force=True)

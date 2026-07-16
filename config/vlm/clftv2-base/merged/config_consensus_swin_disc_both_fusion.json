@@ -1,12 +1,13 @@
 {
-    "Summary": "VLM CLFTv2-Tiny CrossFusion - annotation_swin_only_discovery_noVLM (Swin filtering + all Swin-detected discoveries, no VLM confirmation) [VLM-independent]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - consensus: Swin-only filtering + discovery confirmed by BOTH VLMs [LLaVA+Qwen]",
     "tags": [
         "VLM",
         "CLFTv2",
-        "Tiny",
+        "Base",
         "CrossFusion",
-        "annotation_swin_only_discovery_noVLM",
-        "shared"
+        "annotation_swin_only_disc_both",
+        "llava_34b",
+        "qwen2.5vl_72b"
     ],
     "CLI": {
         "backbone": "swin_fusion",
@@ -26,15 +27,15 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-tiny/shared/swin_discovery_noVLM_fusion"
+        "logdir": "logs/vlm/clftv2-base/merged/consensus_swin_disc_both_fusion"
     },
     "SwinFusion": {
-        "model_timm": "swinv2_tiny_window16_256",
+        "model_timm": "swinv2_base_window16_256",
         "emb_dims": [
-            96,
-            192,
-            384,
-            768
+            128,
+            256,
+            512,
+            1024
         ],
         "hooks": [
             0,
@@ -63,7 +64,7 @@
         "dataset_root": "/run/media/tom/ml/zod_temp",
         "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
         "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
-        "annotation_path": "vlm/llava_34b/annotation_swin_only_discovery_noVLM",
+        "annotation_path": "vlm/merged_llava_34b_qwen2.5vl_72b/annotation_swin_only_disc_both",
         "dataset_classes": [
             {
                 "name": "background",
