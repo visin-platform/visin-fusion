@@ -11,7 +11,7 @@
     "CLI": {
         "backbone": "swin_fusion",
         "mode": "cross_fusion",
-        "path": "/run/media/tom/ml/zod_temp/"
+        "path": "/mnt/ml/zod_temp/"
     },
     "General": {
         "device": "cuda:0",
@@ -60,9 +60,9 @@
     },
     "Dataset": {
         "name": "zod",
-        "dataset_root": "/run/media/tom/ml/zod_temp",
-        "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
-        "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
+        "dataset_root": "/mnt/ml/zod_temp",
+        "train_split": "/mnt/ml/zod_temp/splits_vlm_4110/train.txt",
+        "val_split": "/mnt/ml/zod_temp/splits_vlm_4110/validation.txt",
         "annotation_path": "vlm/llava_34b/annotation_full",
         "dataset_classes": [
             {

@@ -1,17 +1,17 @@
 {
-    "Summary": "VLM CLFTv2-Base CrossFusion - Swin filtering + LLaVA-confirmed discovery, exact CC masks [LLaVA-1.6-34B]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_human_verified (all 4,110 flagged frames manually verified, incorrect masks removed) [human reference; the clean arm of the manual-cleaning contrast]",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
         "CrossFusion",
-        "annotation_swin_only_discovery_ccm",
-        "llava_34b"
+        "annotation_human_verified",
+        "human"
     ],
     "CLI": {
         "backbone": "swin_fusion",
         "mode": "cross_fusion",
-        "path": "/run/media/tom/ml/zod_temp/"
+        "path": "/mnt/ml/zod_temp/"
     },
     "General": {
         "device": "cuda:0",
@@ -26,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/llava/swin_discovery_ccm_fusion"
+        "logdir": "logs/vlm/clftv2-base/human/human_verified_fusion"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",
@@ -60,10 +60,10 @@
     },
     "Dataset": {
         "name": "zod",
-        "dataset_root": "/run/media/tom/ml/zod_temp",
-        "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
-        "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
-        "annotation_path": "vlm/llava_34b/annotation_swin_only_discovery_ccm",
+        "dataset_root": "/mnt/ml/zod_temp",
+        "train_split": "/mnt/ml/zod_temp/splits_vlm_4110/train.txt",
+        "val_split": "/mnt/ml/zod_temp/splits_vlm_4110/validation.txt",
+        "annotation_path": "annotation_human_verified",
         "dataset_classes": [
             {
                 "name": "background",

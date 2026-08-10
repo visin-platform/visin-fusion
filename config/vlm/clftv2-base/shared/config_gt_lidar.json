@@ -11,7 +11,7 @@
     "CLI": {
         "backbone": "swin_fusion",
         "mode": "lidar",
-        "path": "/run/media/tom/ml/zod_temp/"
+        "path": "/mnt/ml/zod_temp/"
     },
     "General": {
         "device": "cuda:0",
@@ -60,9 +60,9 @@
     },
     "Dataset": {
         "name": "zod",
-        "dataset_root": "/run/media/tom/ml/zod_temp",
-        "train_split": "/run/media/tom/ml/zod_temp/splits_good/train.txt",
-        "val_split": "/run/media/tom/ml/zod_temp/splits_good/validation.txt",
+        "dataset_root": "/mnt/ml/zod_temp",
+        "train_split": "/mnt/ml/zod_temp/splits_good/train.txt",
+        "val_split": "/mnt/ml/zod_temp/splits_good/validation.txt",
         "annotation_path": "annotation_camera_only",
         "dataset_classes": [
             {
