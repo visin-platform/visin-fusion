@@ -1,5 +1,5 @@
 {
-    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_human_verified (all 4,110 flagged frames manually verified, incorrect masks removed) [human reference; the clean arm of the manual-cleaning contrast]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - vlm/human_verified/annotation (flagged frames manually verified in visin, incorrect masks removed) [human reference; the clean arm of the manual-cleaning contrast]",
     "tags": [
         "VLM",
         "CLFTv2",
@@ -63,7 +63,7 @@
         "dataset_root": "/mnt/ml/zod_temp",
         "train_split": "/mnt/ml/zod_temp/splits_vlm_4110/train.txt",
         "val_split": "/mnt/ml/zod_temp/splits_vlm_4110/validation.txt",
-        "annotation_path": "annotation_human_verified",
+        "annotation_path": "vlm/human_verified/annotation",
         "dataset_classes": [
             {
                 "name": "background",
