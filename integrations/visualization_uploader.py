@@ -76,7 +76,7 @@ def upload_visualization(epoch_uuid, file_path, viz_type, metadata=None):
         
         upload_url = data["data"]["uploadUrl"]
         viz_uuid = data["data"]["visualization_uuid"]
-        minio_file_id = data["data"]["minioFileId"]
+        file_id = data["data"]["fileId"]
         
         # Step 2: Upload file to MinIO
         with open(file_path, 'rb') as f:
@@ -94,7 +94,7 @@ def upload_visualization(epoch_uuid, file_path, viz_type, metadata=None):
             "visualization_uuid": viz_uuid,
             "filename": filename,
             "type": viz_type,
-            "minioFileId": minio_file_id,
+            "fileId": file_id,
             "mimetype": mimetype,
             "size": file_size
         }

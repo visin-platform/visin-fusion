@@ -1,17 +1,17 @@
 {
-    "Summary": "VLM CLFTv2-Base CrossFusion - vlm/human_verified/annotation (flagged frames manually verified in visin, incorrect masks removed) [human reference; the clean arm of the manual-cleaning contrast]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - cleaning contrast, human_verified: human-cleaned SAM masks (the ones a person rejected are erased) \u2014 the clean arm. Paired with the other arm in this folder on the same 519/121/160 human-verified frames; only the training labels differ. Score both with dump_frame_metrics.py --reference vlm/human_verified/annotation, never test_swin.py. See README.md.",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
         "CrossFusion",
-        "annotation_human_verified",
-        "human"
+        "cleaning_contrast",
+        "human_verified"
     ],
     "CLI": {
         "backbone": "swin_fusion",
         "mode": "cross_fusion",
-        "path": "/mnt/ml/zod_temp/"
+        "path": "/mnt/ml/zod_temp/vlm/human_verified/splits/"
     },
     "General": {
         "device": "cuda:0",
@@ -26,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/human/human_verified_fusion"
+        "logdir": "logs/vlm/clftv2-base/cleaning/human_verified"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",
@@ -61,8 +61,8 @@
     "Dataset": {
         "name": "zod",
         "dataset_root": "/mnt/ml/zod_temp",
-        "train_split": "/mnt/ml/zod_temp/splits_vlm_4110/train.txt",
-        "val_split": "/mnt/ml/zod_temp/splits_vlm_4110/validation.txt",
+        "train_split": "/mnt/ml/zod_temp/vlm/human_verified/splits/train.txt",
+        "val_split": "/mnt/ml/zod_temp/vlm/human_verified/splits/validation.txt",
         "annotation_path": "vlm/human_verified/annotation",
         "dataset_classes": [
             {

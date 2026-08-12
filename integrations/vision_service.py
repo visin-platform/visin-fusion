@@ -14,6 +14,11 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 
 VISION_API_BASE_URL = "https://vision-api.visin.eu/api"
 
+# The training schema caps these server-side; overrunning them fails validation
+# with a 400 instead of truncating.
+MAX_NAME_LENGTH = 200
+MAX_DESCRIPTION_LENGTH = 1000
+
 def get_auth_headers():
     """Get authorization headers for API requests."""
     token = os.getenv('VISIN_TOKEN')
@@ -69,24 +74,34 @@ def create_training(uuid, name, model, dataset, description=None, status="runnin
         str or None: Training ID if successful, None if failed
     """
     url = f"{VISION_API_BASE_URL}/trainings"
-    
+
+    full_name = (name or '').strip()
+
+    # The API no longer accepts free-form `model`/`dataset` fields: the dataset
+    # goes in `datasetId` (shown as-is in the UI) and everything else has to
+    # travel under `metadata`, otherwise it is silently dropped on the server.
     payload = {
         "uuid": uuid,
         "status": status,
-        "name": name,
-        "model": model,
-        "dataset": dataset
+        "name": full_name[:MAX_NAME_LENGTH],
+        "datasetId": dataset,
+        "metadata": {"model": model, "dataset": dataset}
     }
-    
+
+    # Callers pass the config Summary as the name, which can exceed the name
+    # limit — keep the untruncated text in the description rather than lose it.
+    if not description and len(full_name) > MAX_NAME_LENGTH:
+        description = full_name
+
     if description:
-        payload["description"] = description
-    
+        payload["description"] = description[:MAX_DESCRIPTION_LENGTH]
+
     if config_id:
         payload["configId"] = config_id
-    
+
     if tags:
         payload["tags"] = tags
-    
+
     try:
         response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10, verify=False)
         response.raise_for_status()
@@ -99,6 +114,9 @@ def create_training(uuid, name, model, dataset, description=None, status="runnin
             return None
     except requests.exceptions.RequestException as e:
         print(f"Request failed when creating training: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Response status: {e.response.status_code}")
+            print(f"Response body: {e.response.text}")
         return None
     except json.JSONDecodeError as e:
         print(f"Failed to parse response JSON: {e}")
@@ -356,7 +374,7 @@ def upload_visualization(epoch_uuid, file_path, viz_type, metadata=None):
         
         upload_url = data["data"]["uploadUrl"]
         viz_uuid = data["data"]["visualization_uuid"]
-        minio_file_id = data["data"]["minioFileId"]
+        file_id = data["data"]["fileId"]
         
         # Step 2: Upload file to MinIO
         with open(file_path, 'rb') as f:
@@ -374,7 +392,7 @@ def upload_visualization(epoch_uuid, file_path, viz_type, metadata=None):
             "visualization_uuid": viz_uuid,
             "filename": filename,
             "type": viz_type,
-            "minioFileId": minio_file_id,
+            "fileId": file_id,
             "mimetype": mimetype,
             "size": file_size
         }
