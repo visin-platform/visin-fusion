@@ -1,5 +1,5 @@
 {
-    "Summary": "VLM CLFTv2-Base CrossFusion - cleaning contrast, human_verified: human-cleaned SAM masks (the ones a person rejected are erased) \u2014 the clean arm. Paired with the other arm in this folder on the same 519/121/160 human-verified frames; only the training labels differ. Score both with dump_frame_metrics.py --reference vlm/human_verified/annotation, never test_swin.py. See README.md.",
+    "Summary": "VLM CLFTv2-Base CrossFusion - cleaning contrast, human_verified (SAM masks a person kept, rejects erased)",
     "tags": [
         "VLM",
         "CLFTv2",
