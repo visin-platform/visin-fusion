@@ -103,18 +103,34 @@ def main():
     parser.add_argument('--checkpoint', default=None, help='Checkpoint path (default: best from logdir)')
     parser.add_argument('--logdir-suffix', default='',
                         help="Appended to Log.logdir before checkpoint lookup, e.g. '_seed1'")
-    parser.add_argument('--splits', required=True, help='Directory containing test_*.txt split files')
-    parser.add_argument('--reference', required=True,
+    # The three below are properties of the experiment rather than of the
+    # invocation, so they live in the config's Eval block and these flags only
+    # override it. A variant scored against a different reference or a different
+    # test split is a different measurement; keeping that in a shell command
+    # means two runs of "the same" config can quietly mean different things.
+    parser.add_argument('--splits', help='Directory containing test_*.txt split files '
+                                         '(default: Eval.splits from the config)')
+    parser.add_argument('--reference',
                         help="Reference annotation dir relative to dataset root "
-                             "(replaces 'camera' in split paths), e.g. annotation_camera_only")
-    parser.add_argument('--out', required=True, help='Output JSON path')
+                             "(replaces 'camera' in split paths), e.g. annotation_camera_only "
+                             "(default: Eval.reference from the config)")
+    parser.add_argument('--out', help='Output JSON path (default: Eval.metrics_out)')
     args = parser.parse_args()
 
     with open(args.config) as f:
         config = json.load(f)
 
+    ev = config.get('Eval', {})
+    splits = args.splits or ev.get('splits')
+    reference = args.reference or ev.get('reference')
+    out = args.out or ev.get('metrics_out')
+    missing = [n for n, v in (('splits', splits), ('reference', reference), ('out', out)) if not v]
+    if missing:
+        raise SystemExit(f"no {' or '.join(missing)} given: add an Eval block to "
+                         f"{args.config}, or pass --{missing[0]}")
+
     # Override the evaluation reference — this is the whole point of the script.
-    config['Dataset']['annotation_path'] = args.reference
+    config['Dataset']['annotation_path'] = reference
     if args.logdir_suffix:
         config['Log']['logdir'] = config['Log']['logdir'].rstrip('/') + args.logdir_suffix
 
@@ -125,7 +141,7 @@ def main():
     if not checkpoint_path:
         raise SystemExit('No checkpoint found.')
     print(f'Checkpoint: {checkpoint_path}')
-    print(f'Reference : {args.reference}   Splits: {args.splits}')
+    print(f'Reference : {reference}   Splits: {splits}')
 
     builder = (AdvancedModelBuilder(config, device) if 'SwinFusion' in config
                else ModelBuilder(config, device))
@@ -136,7 +152,7 @@ def main():
     conditions = {}
     weather_mious = []
     for wf in WEATHER_FILES:
-        split_path = os.path.join(args.splits, wf)
+        split_path = os.path.join(splits, wf)
         if not os.path.exists(split_path):
             print(f'  {wf}: not found, skipping')
             continue
@@ -151,18 +167,18 @@ def main():
     overall = float(np.mean(weather_mious)) if weather_mious else float('nan')
     print(f'  overall mIoU (mean over conditions): {overall:.4f}')
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    with open(args.out, 'w') as f:
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, 'w') as f:
         json.dump({
             'config': args.config,
             'checkpoint': checkpoint_path,
-            'reference': args.reference,
-            'splits': args.splits,
+            'reference': reference,
+            'splits': splits,
             'eval_classes': ['vehicle', 'sign', 'human'],
             'overall_miou': overall,
             'conditions': conditions,
         }, f)
-    print(f'Written: {args.out}')
+    print(f'Written: {out}')
 
 
 if __name__ == '__main__':
