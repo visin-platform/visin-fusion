@@ -1,5 +1,5 @@
 {
-    "Summary": "iSEAuto CLFTv2-Base CrossFusion - init from ZOD Swin + disc. (no VLM) checkpoint, exact-mask (ccm) retrain",
+    "Summary": "iSEAuto CLFTv2-Base CrossFusion - init from ZOD Swin+discovery checkpoint (ungated; worst in-domain variant, 34.8 mIoU)",
     "tags": [
         "iSEAuto",
         "CLFTv2",
@@ -23,7 +23,7 @@
         "reset_lr": true,
         "early_stop_patience": 200,
         "max_checkpoints": 2,
-        "model_path": "logs/vlm/clftv2-base/shared/swin_discovery_noVLM_ccm_fusion/checkpoints/epoch_186_de374312-badc-4aba-85e1-b7eec093b695.pth",
+        "model_path": "logs/vlm/clftv2-base/shared/swin_discovery_noVLM_ccm_fusion/checkpoints/epoch_199_415fc62a-e527-4b20-a337-937c4020b35a.pth",
         "transfer_learning": true,
         "source_classes": [
             {

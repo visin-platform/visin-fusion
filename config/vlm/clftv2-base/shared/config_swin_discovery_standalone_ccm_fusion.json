@@ -1,17 +1,16 @@
 {
- "Summary": "VLM CLFTv2-Base RGB - annotation_gt (Ground-truth manual annotations on clean partition) [GT]",
+ "Summary": "VLM CLFTv2-Base CrossFusion - Swin filtering + geometry-gated Swin discoveries (no VLM): only STANDALONE candidates, exact CC masks",
  "tags": [
   "VLM",
   "CLFTv2",
   "Base",
-  "RGB",
-  "annotation_gt",
-  "gt"
+  "CrossFusion",
+  "annotation_swin_only_discovery_noVLM_standalone_ccm"
  ],
  "CLI": {
   "backbone": "swin_fusion",
-  "mode": "rgb",
-  "path": "/mnt/ml/zod_temp/"
+  "mode": "cross_fusion",
+  "path": "/mnt/ml/zod_temp/splits_vlm_4110_humantest/"
  },
  "General": {
   "device": "cuda:0",
@@ -26,7 +25,7 @@
   "model_path": ""
  },
  "Log": {
-  "logdir": "logs/vlm/clftv2-base/gt/gt_rgb"
+  "logdir": "logs/vlm/clftv2-base/shared/swin_discovery_standalone_ccm_fusion"
  },
  "SwinFusion": {
   "model_timm": "swinv2_base_window16_256",
@@ -61,9 +60,9 @@
  "Dataset": {
   "name": "zod",
   "dataset_root": "/mnt/ml/zod_temp",
-  "train_split": "/mnt/ml/zod_temp/splits_good/train.txt",
-  "val_split": "/mnt/ml/zod_temp/splits_good/validation.txt",
-  "annotation_path": "annotation_camera_only",
+  "train_split": "/mnt/ml/zod_temp/splits_vlm_4110_humantest/train.txt",
+  "val_split": "/mnt/ml/zod_temp/splits_vlm_4110_humantest/validation.txt",
+  "annotation_path": "annotation_swin_only_discovery_noVLM_standalone_ccm",
   "dataset_classes": [
    {
     "name": "background",
@@ -175,8 +174,8 @@
   }
  },
  "Eval": {
-  "splits": "/mnt/ml/zod_temp/splits_good",
-  "reference": "annotation_camera_only",
-  "metrics_out": "logs/vlm/frame_metrics/modality/gt_rgb.json"
+  "splits": "/mnt/ml/zod_temp/splits_vlm_4110_humantest",
+  "reference": "vlm/human_verified/annotation",
+  "metrics_out": "logs/vlm/frame_metrics/ladder/swin_discovery_standalone_ccm_fusion.json"
  }
 }
