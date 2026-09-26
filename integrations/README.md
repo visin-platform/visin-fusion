@@ -24,10 +24,10 @@ The SLURM jobs run each config through four scripts, and each one adds to the sa
 
 | Script | Reports | How it finds the run |
 | --- | --- | --- |
-| `train_*.py` | the run, its config, then every epoch as it finishes | creates it; a resumed training (`General.resume_training`) finds it by the training UUID in `logs/.../epochs/` |
-| `test_*.py` | a test result per tested checkpoint | the training UUID in the epoch logs, and the epoch UUID in the checkpoint's name |
-| `visualize_*.py --upload` | segment, overlay, compare and correct_only frames | the same |
-| `benchmark*.py` | a benchmark on the measured checkpoint | the same |
+| `stages/train/*.py` | the run, its config, then every epoch as it finishes | creates it; a resumed training (`General.resume_training`) finds it by the training UUID in `logs/.../epochs/` |
+| `stages/test/*.py` | a test result per tested checkpoint | the training UUID in the epoch logs, and the epoch UUID in the checkpoint's name |
+| `stages/visualize/*.py --upload` | segment, overlay, compare and correct_only frames | the same |
+| `stages/benchmark/*.py` | a benchmark on the measured checkpoint | the same |
 
 - **Epoch UUIDs are deterministic**: `visin.epoch_uuid_for(training_uuid, epoch)`. The epoch log file,
   the checkpoint (`epoch_{n}_{uuid}.pth`) and Visin all carry the same one.

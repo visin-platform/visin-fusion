@@ -1,0 +1,2 @@
+camera/frame_003301.png
+camera/frame_009065.png

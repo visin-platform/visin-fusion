@@ -1,0 +1,9 @@
+target-version = "py312"
+line-length = 120
+extend-exclude = ["venv*", "paper*"]
+
+[lint]
+# Enforced in CI: syntax errors, undefined names, invalid comparisons and statements,
+# redefinitions, unused imports, f-strings without placeholders, bare except. These all pass
+# today; add rules as the TODO.md cleanups land (next: "F841" unused variables).
+select = ["E9", "F63", "F7", "F82", "F811", "F401", "F541", "E722"]

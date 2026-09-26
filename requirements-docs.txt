@@ -1,0 +1,3 @@
+mkdocs>=1.6,<2  # MkDocs 2 drops the plugins and themes mkdocs-material relies on
+mkdocs-material
+pydantic>=2

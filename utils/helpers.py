@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import random
 import torch
 import numpy as np
-import shutil
-import datetime
 import glob
 
 def creat_dir(config):
@@ -17,14 +16,72 @@ def creat_dir(config):
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
 
-def get_annotation_path(cam_path, dataset_name, config):
-    """Get annotation path based on dataset and config."""
-    if dataset_name in ['zod', 'iseauto']:
-        anno_folder = config['Dataset']['annotation_path']
-        return cam_path.replace('camera', anno_folder)
-    else:  # waymo
-        # Use same annotation path as training: /annotation/ directories
-        return cam_path.replace('camera/', 'annotation/')
+def calculate_num_classes(config):
+    """Number of model output classes: one per entry in Dataset.train_classes.
+
+    Relabeled annotations index the model output directly, so class indices must be
+    0..n-1 with no gaps or duplicates.
+    """
+    indices = sorted(cls['index'] for cls in config['Dataset']['train_classes'])
+    if not indices:
+        raise ValueError("No training classes defined in config (Dataset.train_classes)")
+    if indices != list(range(len(indices))):
+        raise ValueError(
+            f"Dataset.train_classes indices must be 0..{len(indices) - 1} with no gaps or "
+            f"duplicates, got {indices}"
+        )
+    return len(indices)
+
+
+def calculate_num_eval_classes(config, num_classes=None):
+    """Number of evaluated classes: every train class except background (index 0)."""
+    return sum(1 for cls in config['Dataset']['train_classes'] if cls['index'] > 0)
+
+
+def set_seed(seed):
+    """Seed Python, NumPy and torch (CPU and CUDA) for a reproducible run.
+
+    DataLoader workers derive their seeds from torch's, so this also fixes shuffling and
+    the augmentations in core/dataset_png.py.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def get_device(config):
+    """The config's device, or the CPU when CUDA is not available (e.g. a CPU-only container)."""
+    return torch.device(config['General']['device'] if torch.cuda.is_available() else 'cpu')
+
+
+def replace_camera_folder(cam_path, folder, camera='camera'):
+    """A frame's camera image path with its camera folder replaced by ``folder``.
+
+    Only the last folder named ``camera`` changes, never the file name or the dataset root,
+    e.g. ``/data/zod/camera/frame_1.png`` -> ``/data/zod/lidar_png/frame_1.png``.
+    """
+    parts = cam_path.split('/')
+    for i in range(len(parts) - 2, -1, -1):
+        if parts[i] == camera:
+            return '/'.join(parts[:i] + [folder] + parts[i + 1:])
+    raise ValueError(f"no '{camera}' folder in frame path {cam_path}")
+
+
+def _layout(config):
+    return config['Dataset'].get('layout') or {}
+
+
+def get_annotation_path(cam_path, config):
+    """Annotation of a frame: its camera folder replaced by Dataset.annotation_path."""
+    folder = config['Dataset'].get('annotation_path') or 'annotation'
+    return replace_camera_folder(cam_path, folder, _layout(config).get('camera', 'camera'))
+
+
+def get_lidar_path(cam_path, config):
+    """LiDAR projection of a frame: its camera folder replaced by the dataset's LiDAR folder."""
+    layout = _layout(config)
+    return replace_camera_folder(cam_path, layout.get('lidar', 'lidar_png'), layout.get('camera', 'camera'))
 
 def relabel_annotation(annotation, config):
     """
@@ -40,7 +97,7 @@ def relabel_annotation(annotation, config):
     Returns:
         torch tensor with training indices [1, H, W]
     """
-    annotation = np.array(annotation)
+    annotation = annotation.cpu().numpy() if torch.is_tensor(annotation) else np.asarray(annotation)
     
     train_classes = config['Dataset']['train_classes']
     
@@ -51,8 +108,10 @@ def relabel_annotation(annotation, config):
     )
     
     # Create mapping from dataset index to training index
-    # Default to 0 (background) for unmapped indices
-    dataset_to_train_mapping = np.zeros(max_dataset_index + 1, dtype=int)
+    # Default to 0 (background) for unmapped indices, including label values above every mapped
+    # class (e.g. 255 as "ignore"), which would otherwise index past the end of the table
+    size = max(max_dataset_index, int(annotation.max()) if annotation.size else 0) + 1
+    dataset_to_train_mapping = np.zeros(size, dtype=int)
     
     for train_cls in train_classes:
         train_index = train_cls['index']
@@ -111,25 +170,6 @@ def draw_test_segmentation_map(outputs, config=None):
     segmented_image = np.stack([red_map, green_map, blue_map], axis=2)
     return segmented_image
 
-def image_overlay(image, segmented_image):
-    """
-    Create overlay with transparent masks on original image.
-    Only predicted classes are shown with transparency, background remains original.
-    Both image and segmented_image should be in BGR format.
-    """
-    # Create a copy of the original image
-    overlay = image.copy().astype(np.float32)
-
-    # Find non-black pixels in segmented image (predicted classes)
-    # Background is black [0, 0, 0] in BGR
-    mask = np.any(segmented_image != [0, 0, 0], axis=2)
-
-    # Apply alpha blending only to predicted regions
-    alpha = 0.6  # transparency level
-    overlay[mask] = alpha * segmented_image[mask].astype(np.float32) + (1 - alpha) * overlay[mask]
-
-    return overlay.astype(np.uint8)
-
 def get_all_checkpoint_paths(config, ignore_model_path=False):
     """Get all checkpoint file paths, sorted by epoch number.
     
@@ -165,7 +205,8 @@ def get_all_checkpoint_paths(config, ignore_model_path=False):
             else:
                 num_str = '0'
             return int(num_str)
-        except:
+        except ValueError:
+            print(f"Warning: cannot read an epoch number from checkpoint {filepath}; sorting it as epoch 0")
             return 0
     
     # Only the current run's checkpoints: when an earlier run of the config
@@ -282,49 +323,20 @@ def get_checkpoint_path_with_fallback(config):
     
     return None
 
-def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None):
+def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None, scheduler=None):
+    """Save a checkpoint: weights, optimizer and (so a resumed run continues it) the LR schedule."""
     creat_dir(config)
     if epoch_uuid:
         filename = f"epoch_{epoch}_{epoch_uuid}.pth"
     else:
         filename = f"checkpoint_{epoch}.pth"
-    torch.save({
+    state = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict()},
-        os.path.join(config['Log']['logdir'], 'checkpoints', filename)
-    )
-
-def get_model_config_key(config):
-    """Get the model configuration key (CLFT, SwinFusion, etc.)"""
-    backbone = config['CLI']['backbone']
-    if backbone == 'clft':
-        return 'CLFT'
-    elif backbone == 'swin_fusion':
-        return 'SwinFusion'
-    elif backbone == 'maskformer':
-        return 'MaskFormer'
-    elif backbone == 'mask2former':
-        return 'Mask2Former'
-    else:
-        return 'CLFT'  # default
-
-def adjust_learning_rate(config, optimizer, epoch):
-    """Decay the learning rate based on schedule.
-
-    If 'lr_momentum' is absent from the model config block (e.g. when an
-    external scheduler already manages the LR), the function is a no-op and
-    returns the current LR from the optimizer.
-    """
-    model_key = get_model_config_key(config)
-    momentum = config[model_key].get('lr_momentum', None)
-    if momentum is None:
-        # Scheduler-managed LR — just read and return current value
-        return optimizer.param_groups[0]['lr']
-    lr = config[model_key]['clft_lr'] * (momentum ** epoch)
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    return lr
+        'optimizer_state_dict': optimizer.state_dict()}
+    if scheduler is not None:
+        state['scheduler_state_dict'] = scheduler.state_dict()
+    torch.save(state, os.path.join(config['Log']['logdir'], 'checkpoints', filename))
 
 def manage_checkpoints_by_miou(config, log_dir):
     """Keep only the top max_checkpoints checkpoints based on validation mIoU from JSON files.
@@ -454,14 +466,6 @@ class EarlyStopping(object):
             self.min_param = valid_param
             # No need to save additional checkpoint - we save every epoch now
             self.count = 0
-
-def create_config_snapshot():
-    source_file = 'config.json'
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    destination_file = f'config_{timestamp}.json'
-    shutil.copy(source_file, destination_file)
-    print(f'Config snapshot created {destination_file}')
-
 
 def sanitize_for_json(data):
     """Recursively sanitize data for JSON serialization (handle NaN/Inf)."""

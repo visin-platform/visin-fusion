@@ -142,7 +142,7 @@ def get_epoch_system_snapshot():
                         gpu_data['power_watts'] = round(power, 1)
                         gpu_data['power_limit_watts'] = round(power_limit, 1)
                         gpu_data['power_percent'] = round((power / power_limit) * 100, 1)
-                    except:
+                    except Exception:  # optional readings; not every GPU reports them
                         pass
                     
                     # Clock speeds
@@ -151,14 +151,14 @@ def get_epoch_system_snapshot():
                         mem_clock = pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_MEM)
                         gpu_data['clock_sm_mhz'] = sm_clock
                         gpu_data['clock_memory_mhz'] = mem_clock
-                    except:
+                    except Exception:  # optional readings; not every GPU reports them
                         pass
                     
                     # Fan speed
                     try:
                         fan = pynvml.nvmlDeviceGetFanSpeed(handle)
                         gpu_data['fan_speed_percent'] = fan
-                    except:
+                    except Exception:  # optional readings; not every GPU reports them
                         pass
                         
                 except Exception as e:
@@ -169,7 +169,7 @@ def get_epoch_system_snapshot():
         if use_nvml:
             try:
                 pynvml.nvmlShutdown()
-            except:
+            except Exception:  # optional readings; not every GPU reports them
                 pass
         
         snapshot['gpu'] = gpu_info
@@ -198,14 +198,14 @@ def print_system_info(system_info=None):
     
     # CPU
     cpu = system_info['cpu']
-    print(f"\nCPU:")
+    print("\nCPU:")
     print(f"  Physical cores: {cpu['count_physical']}")
     print(f"  Logical cores: {cpu['count']}")
     print(f"  Usage: {cpu['usage_percent']:.1f}%")
     
     # Memory
     mem = system_info['memory']
-    print(f"\nMemory:")
+    print("\nMemory:")
     print(f"  Total: {mem['total_gb']:.2f} GB")
     print(f"  Used: {mem['used_gb']:.2f} GB ({mem['percent']:.1f}%)")
     print(f"  Available: {mem['available_gb']:.2f} GB")

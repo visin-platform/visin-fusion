@@ -1,254 +1,155 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Training engine for model training.
+The training loop, the same for every model: what differs between models (optimizer, learning-rate
+schedule, loss, gradient clipping, mixed precision) comes from models/registry.py:training_setup.
 """
+import os
 import time
+
 import torch
-from tqdm import tqdm
+from torch.amp import GradScaler, autocast
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
-from torch.amp import autocast, GradScaler
-from utils.helpers import relabel_annotation, adjust_learning_rate, save_model_dict, EarlyStopping, manage_checkpoints_by_miou
+from tqdm import tqdm
+
 from integrations.training_logger import log_epoch_results
+from models.registry import forward, segmentation
+from utils.helpers import EarlyStopping, manage_checkpoints_by_miou, relabel_annotation, save_model_dict
 from utils.system_monitor import get_epoch_system_snapshot
 
 
 class TrainingEngine:
-    """Handles the training loop and epoch execution."""
-    
-    def __init__(self, model, optimizer, criterion, metrics_calculator, config,
-                 training_uuid, log_dir, device, run=None):
+    """Trains a model epoch by epoch: logs, checkpoints, early stopping and reports to Visin."""
+
+    def __init__(self, model, setup, metrics_calculator, config, training_uuid, log_dir, device, run=None):
         self.model = model
-        self.optimizer = optimizer
-        self.criterion = criterion
+        self.setup = setup  # models.registry.TrainingSetup
+        self.optimizer = setup.optimizer
+        self.scheduler = setup.scheduler
         self.metrics_calc = metrics_calculator
         self.config = config
         self.training_uuid = training_uuid
         self.log_dir = log_dir
         self.device = device
         self.run = run  # the Visin run epochs are reported to (visin.Run), if any
-        self.writer = SummaryWriter()
+        # TensorBoard logs beside the run's other logs, not in ./runs of whatever directory it started in
+        self.writer = SummaryWriter(log_dir=os.path.join(log_dir, 'tensorboard'))
         self.early_stopping = EarlyStopping(config)
-        self.scaler = GradScaler('cuda')
-    
-    def train_epoch(self, dataloader, modality, num_classes):
-        """Execute one training epoch."""
+        self.mixed_precision = setup.mixed_precision and device.type == 'cuda'
+        self.scaler = GradScaler('cuda', enabled=self.mixed_precision)
+
+    def _batch(self, batch):
+        """Inputs and training labels on the device (labels relabelled on the CPU, then sent once)."""
+        rgb = batch['rgb'].to(self.device, non_blocking=True)
+        lidar = batch['lidar'].to(self.device, non_blocking=True)
+        labels = relabel_annotation(batch['anno'], self.config).squeeze(0).to(self.device, non_blocking=True)
+        return rgb, lidar, labels
+
+    def _loss(self, rgb, lidar, labels):
+        with autocast('cuda', enabled=self.mixed_precision):
+            outputs = forward(self.model, self.config, rgb, lidar)
+            segmap = segmentation(outputs, self.config)
+            return segmap, self.setup.loss(outputs, segmap, labels)
+
+    def train_epoch(self, dataloader, num_classes):
+        """One training epoch; returns its metrics."""
         self.model.train()
-        
         accumulators = self.metrics_calc.create_accumulators(self.device)
-        train_loss = 0.0
-        
+        total_loss = 0.0
         progress_bar = tqdm(dataloader)
         for batch in progress_bar:
-            # Relabel on the CPU DataLoader tensor, then send to GPU once.
-            # Avoids: GPU send → anno.cpu() sync stall → GPU send again.
-            rgb   = batch['rgb'].to(self.device, non_blocking=True)
-            lidar = batch['lidar'].to(self.device, non_blocking=True)
-            anno  = relabel_annotation(
-                batch['anno'], self.config
-            ).squeeze(0).to(self.device, non_blocking=True)
-            
+            rgb, lidar, labels = self._batch(batch)
             self.optimizer.zero_grad(set_to_none=True)
-            
-            # Prepare inputs based on modality
-            rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
-            
-            # Forward pass with mixed precision
-            with autocast('cuda'):
-                model_outputs = self.model(rgb_input, lidar_input, modality)
-                if modality == 'cross_fusion':
-                    # For fusion: check if first output is None (depth models)
-                    if model_outputs[0] is None:
-                        output_seg = model_outputs[1]  # segmentation output
-                    else:
-                        output_seg = model_outputs[0]  # direct segmentation output
-                else:
-                    # For single modality: check if first output is None (depth models)
-                    if model_outputs[0] is None:
-                        output_seg = model_outputs[1]  # segmentation output
-                    else:
-                        output_seg = model_outputs[0]  # direct segmentation output
-                output_seg = output_seg.squeeze(1)
-                
-                # Compute loss
-                loss = self.criterion(output_seg, anno)
-            
-            # Update metrics (outside autocast for precision)
-            self.metrics_calc.update_accumulators(
-                accumulators, output_seg, anno, num_classes
-            )
-            
-            train_loss += loss.item()
-            
-            # Backprop with scaler
+            segmap, loss = self._loss(rgb, lidar, labels)
+            self.metrics_calc.update_accumulators(accumulators, segmap, labels, num_classes)
+            total_loss += loss.item()
+
             self.scaler.scale(loss).backward()
+            if self.setup.clip_grad_norm is not None:
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.setup.clip_grad_norm)
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            
             progress_bar.set_description(f'Train loss: {loss:.4f}')
-        
-        # Compute epoch metrics
-        metrics = self.metrics_calc.compute_epoch_metrics(
-            accumulators, train_loss, len(dataloader)
-        )
-        
-        return metrics
-    
-    def validate_epoch(self, dataloader, modality, num_classes):
-        """Execute one validation epoch."""
+        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, len(dataloader))
+
+    def validate_epoch(self, dataloader, num_classes):
+        """One validation epoch, with the training loss; returns its metrics."""
         self.model.eval()
-        
         accumulators = self.metrics_calc.create_accumulators(self.device)
-        valid_loss = 0.0
-        
+        total_loss = 0.0
         with torch.no_grad():
             progress_bar = tqdm(dataloader)
             for batch in progress_bar:
-                # Relabel on the CPU DataLoader tensor, then send to GPU once.
-                rgb   = batch['rgb'].to(self.device, non_blocking=True)
-                lidar = batch['lidar'].to(self.device, non_blocking=True)
-                anno  = relabel_annotation(
-                    batch['anno'], self.config
-                ).squeeze(0).to(self.device, non_blocking=True)
-                
-                # Prepare inputs based on modality
-                rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
-                
-                # Forward pass with mixed precision
-                with autocast('cuda'):
-                    model_outputs = self.model(rgb_input, lidar_input, modality)
-                    if modality == 'cross_fusion':
-                        # For fusion: check if first output is None (depth models)
-                        if model_outputs[0] is None:
-                            output_seg = model_outputs[1]  # segmentation output
-                        else:
-                            output_seg = model_outputs[0]  # direct segmentation output
-                    else:
-                        # For single modality: check if first output is None (depth models)
-                        if model_outputs[0] is None:
-                            output_seg = model_outputs[1]  # segmentation output
-                        else:
-                            output_seg = model_outputs[0]  # direct segmentation output
-                    output_seg = output_seg.squeeze(1)
-                    
-                    # Compute loss
-                    loss = self.criterion(output_seg, anno)
-                
-                # Update metrics
-                self.metrics_calc.update_accumulators(
-                    accumulators, output_seg, anno, num_classes
-                )
-                
-                valid_loss += loss.item()
-                
+                rgb, lidar, labels = self._batch(batch)
+                segmap, loss = self._loss(rgb, lidar, labels)
+                self.metrics_calc.update_accumulators(accumulators, segmap, labels, num_classes)
+                total_loss += loss.item()
                 progress_bar.set_description(f'Valid loss: {loss:.4f}')
-        
-        # Compute epoch metrics
-        metrics = self.metrics_calc.compute_epoch_metrics(
-            accumulators, valid_loss, len(dataloader)
-        )
-        
-        return metrics
-    
-    def _prepare_inputs(self, rgb, lidar, modality):
-        """Prepare model inputs based on training modality."""
-        if modality == 'rgb':
-            return rgb, rgb
-        elif modality == 'lidar':
-            return lidar, lidar
-        else:  # cross_fusion
-            return rgb, lidar
-    
-    def train_full(self, train_dataloader, valid_dataloader, modality, num_classes, start_epoch=0):
-        """Execute full training loop."""
+        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, len(dataloader))
+
+    def _step_scheduler(self, val_metrics):
+        if self.scheduler is None:
+            return
+        if isinstance(self.scheduler, ReduceLROnPlateau):
+            self.scheduler.step(val_metrics['mean_iou'])
+        else:
+            self.scheduler.step()
+
+    def train_full(self, train_dataloader, valid_dataloader, num_classes, start_epoch=0):
+        """Train from ``start_epoch`` to General.epochs, or until early stopping."""
         epochs = self.config['General']['epochs']
-        
-        last_epoch_uuid = None
-        last_epoch = start_epoch - 1
+        last_epoch_uuid, last_epoch = None, start_epoch - 1
         for epoch in range(start_epoch, epochs):
             epoch_start_time = time.time()
-            
-            # Adjust learning rate
-            lr = adjust_learning_rate(self.config, self.optimizer, epoch)
+            lr = self.optimizer.param_groups[0]['lr']  # the rate this epoch trains with
             print(f'Epoch: {epoch}, LR: {lr:.6f}')
-            
-            # Train
-            print('Training...')
-            train_metrics = self.train_epoch(train_dataloader, modality, num_classes)
-            self.metrics_calc.print_metrics(train_metrics, prefix="Training ")
-            
-            # Validate
-            print('Validating...')
-            val_metrics = self.validate_epoch(valid_dataloader, modality, num_classes)
-            self.metrics_calc.print_metrics(val_metrics, prefix="Validation ")
-            
-            epoch_time = time.time() - epoch_start_time
-            
-            # Capture system info
-            system_info = get_epoch_system_snapshot()
-            
-            # Log to tensorboard
-            self._log_tensorboard(train_metrics, val_metrics, epoch)
-            
-            # Log and upload results
-            epoch_uuid = self._log_and_upload_results(
-                epoch, train_metrics, val_metrics, lr, epoch_time, system_info
-            )
-            last_epoch_uuid = epoch_uuid  # Store for final checkpoint
-            last_epoch = epoch
-            
-            # Save checkpoints
-            self._handle_checkpoints(epoch, val_metrics, epoch_uuid)
-            
-            # Check early stopping — based on val mIoU (higher=better; negate for min-tracking)
-            early_stop_index = -round(val_metrics['mean_iou'], 4)
-            self.early_stopping(early_stop_index, epoch, self.model, self.optimizer, epoch_uuid)
 
+            print('Training...')
+            train_metrics = self.train_epoch(train_dataloader, num_classes)
+            self.metrics_calc.print_metrics(train_metrics, prefix="Training ")
+
+            print('Validating...')
+            val_metrics = self.validate_epoch(valid_dataloader, num_classes)
+            self.metrics_calc.print_metrics(val_metrics, prefix="Validation ")
+            self._step_scheduler(val_metrics)
+
+            epoch_time = time.time() - epoch_start_time
+            self._log_tensorboard(train_metrics, val_metrics, epoch)
+            epoch_uuid = self._log_and_upload_results(epoch, train_metrics, val_metrics, lr, epoch_time,
+                                                      get_epoch_system_snapshot())
+            last_epoch_uuid, last_epoch = epoch_uuid, epoch
+
+            print('Saving model checkpoint...')
+            self._save(epoch, epoch_uuid)
+            manage_checkpoints_by_miou(self.config, self.log_dir)  # keep the best max_checkpoints
+
+            # Early stopping on the validation mIoU (higher is better; negated for min-tracking)
+            self.early_stopping(-round(val_metrics['mean_iou'], 4), epoch, self.model, self.optimizer, epoch_uuid)
             if self.early_stopping.early_stop_trigger:
                 break
-        
-        # Save final checkpoint under the epoch it holds. Named after the
-        # configured last epoch, an early-stopped run's checkpoint paired one
-        # epoch's number with another epoch's UUID.
+
+        # The final checkpoint under the epoch it holds
         print('Saving final model checkpoint...')
-        final_epoch = max(last_epoch, 0)
-        save_model_dict(self.config, final_epoch, self.model, self.optimizer, last_epoch_uuid)
+        self._save(max(last_epoch, 0), last_epoch_uuid)
         self.writer.close()
         print('Training Complete')
-    
+
+    def _save(self, epoch, epoch_uuid):
+        save_model_dict(self.config, epoch, self.model, self.optimizer, epoch_uuid, scheduler=self.scheduler)
+
     def _log_tensorboard(self, train_metrics, val_metrics, epoch):
-        """Log metrics to tensorboard."""
-        self.writer.add_scalars('Loss', {
-            'train': train_metrics['epoch_loss'], 
-            'valid': val_metrics['epoch_loss']
-        }, epoch)
-        
+        self.writer.add_scalars('Loss', {'train': train_metrics['epoch_loss'], 'valid': val_metrics['epoch_loss']}, epoch)
         for i, cls in enumerate(self.metrics_calc.eval_classes):
-            self.writer.add_scalars(f'{cls}_IoU', {
-                'train': train_metrics['epoch_IoU'][i], 
-                'valid': val_metrics['epoch_IoU'][i]
-            }, epoch)
-        
-        self.writer.flush()  # keep writer open; flush to disk without closing
-    
+            self.writer.add_scalars(f'{cls}_IoU', {'train': train_metrics['epoch_IoU'][i],
+                                                   'valid': val_metrics['epoch_IoU'][i]}, epoch)
+        self.writer.flush()
+
     def _log_and_upload_results(self, epoch, train_metrics, val_metrics, lr, epoch_time, system_info=None):
         """Log results locally and report them to Visin. Returns the epoch's UUID."""
         if not (self.training_uuid and self.log_dir):
             return None
         results = self.metrics_calc.prepare_results_dict(train_metrics, val_metrics)
-        return log_epoch_results(
-            epoch, self.training_uuid, results, self.log_dir,
-            learning_rate=lr, epoch_time=epoch_time, system_info=system_info,
-            run=self.run
-        )
-    
-    def _handle_checkpoints(self, epoch, val_metrics, epoch_uuid):
-        """Handle checkpoint saving and early stopping."""
-        # Save checkpoint every epoch
-        print('Saving model checkpoint...')
-        save_model_dict(self.config, epoch, self.model, self.optimizer, epoch_uuid)
-        print('Checkpoint saved')
-        
-        # Manage checkpoints: keep only top max_checkpoints by validation mIoU
-        manage_checkpoints_by_miou(self.config, self.log_dir)
-        # Early stopping is handled in train_full
+        return log_epoch_results(epoch, self.training_uuid, results, self.log_dir, learning_rate=lr,
+                                 epoch_time=epoch_time, system_info=system_info, run=self.run)

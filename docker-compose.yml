@@ -1,0 +1,43 @@
+# Run a config through the pipeline in the training image.
+#
+#   docker compose run --rm fusion -c configs/quickstart.json            # GPU
+#   docker compose run --rm fusion-cpu -c configs/quickstart.json        # CPU only
+#
+# Host paths come from the environment (or a .env file next to this one):
+#   DATA_DIR    datasets, at /data; "visin:<name>" datasets are downloaded there (default ./data)
+#   OUTPUT_DIR  logs and checkpoints, at /outputs      (default ./outputs)
+#   CACHE_DIR   downloaded backbone weights, at /cache (default ./.cache)
+# Visin reporting reads VISIN_TOKEN from integrations/.env, if it exists.
+x-fusion: &fusion
+  volumes:
+    - ${DATA_DIR:-./data}:/data
+    - ${OUTPUT_DIR:-./outputs}:/outputs
+    - ${CACHE_DIR:-./.cache}:/cache
+  env_file:
+    - path: integrations/.env
+      required: false
+  shm_size: 8gb  # DataLoader workers share batches through /dev/shm
+  user: "${UID:-1000}:${GID:-1000}"  # files in /outputs and /cache belong to you, not root
+  environment:
+    MPLCONFIGDIR: /tmp/matplotlib
+
+services:
+  fusion:
+    <<: *fusion
+    build: .
+    image: visin-fusion:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  fusion-cpu:
+    <<: *fusion
+    build:
+      context: .
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    image: visin-fusion:cpu

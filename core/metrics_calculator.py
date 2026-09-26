@@ -63,25 +63,6 @@ class MetricsCalculator:
     
     def compute(self):
         """Compute final metrics."""
-        # IoU and metrics
-        iou = self.total_overlap / (self.total_union + 1e-6)
-        precision = self.total_overlap / (self.total_pred + 1e-6)
-        recall = self.total_overlap / (self.total_label + 1e-6)
-        f1 = 2 * precision * recall / (precision + recall + 1e-6)
-        
-        return {
-            'mean_iou': torch.mean(iou).item(),
-            'mean_precision': torch.mean(precision).item(),
-            'mean_recall': torch.mean(recall).item(),
-            'mean_f1': torch.mean(f1).item(),
-            'iou': iou,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1
-        }
-    
-    def compute(self):
-        """Compute final metrics."""
         # Calculate IoU and other metrics
         iou = self.total_overlap / (self.total_union + 1e-6)
         precision = self.total_overlap / (self.total_pred + 1e-6)

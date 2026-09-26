@@ -8,6 +8,8 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from utils.helpers import relabel_annotation
+from models.registry import segment
+from utils.metrics import compute_ap_for_class, store_predictions_for_ap
 
 
 class TestingEngine:
@@ -18,7 +20,6 @@ class TestingEngine:
         self.metrics_calc = metrics_calculator
         self.config = config
         self.device = device
-        self.dataset_name = config['Dataset']['name']
     
     def test(self, dataloader, modality, num_classes):
         """Run testing on a dataloader and return results."""
@@ -44,9 +45,6 @@ class TestingEngine:
                 lidar = batch['lidar'].to(self.device, non_blocking=True)
                 anno = batch['anno'].to(self.device, non_blocking=True)
                 
-                # Prepare inputs
-                rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
-                
                 # Synchronize for accurate timing
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
@@ -54,24 +52,8 @@ class TestingEngine:
                 # Time the forward pass
                 inference_start = time.time()
                 
-                # Forward pass
-                model_outputs = self.model(rgb_input, lidar_input, modality)
-                if isinstance(model_outputs, tuple):
-                    if len(model_outputs) == 2:
-                        # (depth, segmentation) format
-                        if model_outputs[0] is None:
-                            output_seg = model_outputs[1]
-                        else:
-                            output_seg = model_outputs[0]
-                    elif len(model_outputs) == 3:
-                        # (segmentation, None, None) format
-                        output_seg = model_outputs[0]
-                    else:
-                        raise ValueError(f"Unexpected model output format: {len(model_outputs)} outputs")
-                else:
-                    # Single output
-                    output_seg = model_outputs
-                output_seg = output_seg.squeeze(1)
+                # Forward pass: the segmentation map, whatever the model (models/registry.py)
+                output_seg = segment(self.model, self.config, rgb, lidar)
                 
                 # Synchronize and record time
                 if torch.cuda.is_available():
@@ -90,7 +72,8 @@ class TestingEngine:
                 )
                 
                 # Store predictions and targets for AP calculation
-                self._store_predictions_for_ap(output_seg, anno, all_predictions, all_targets)
+                store_predictions_for_ap(output_seg, anno, all_predictions, all_targets,
+                                         self.metrics_calc.eval_classes, self.metrics_calc.eval_indices)
                 
                 # Calculate batch metrics for progress bar
                 batch_IoU = 1.0 * batch_overlap / (np.spacing(1) + batch_union)
@@ -118,54 +101,9 @@ class TestingEngine:
         
         return results, inference_stats
     
-    def _prepare_inputs(self, rgb, lidar, modality):
-        """Prepare model inputs based on modality."""
-        if modality == 'rgb':
-            return rgb, rgb
-        elif modality == 'lidar':
-            return lidar, lidar
-        else:  # cross_fusion
-            return rgb, lidar
-    
     def _get_array_indices(self):
-        """Get array indices for eval classes."""
-        if self.dataset_name in ['zod', 'waymo', 'iseauto']:
-            return [idx - 1 for idx in self.metrics_calc.eval_indices]
-        else:
-            return self.metrics_calc.eval_indices
-    
-    def _store_predictions_for_ap(self, output_seg, anno, all_predictions, all_targets):
-        """Store pixel-wise predictions and targets for AP calculation."""
-        # Apply softmax to get probabilities
-        probs = torch.softmax(output_seg, dim=1)  # Shape: [batch, classes, H, W]
-        
-        # Get predictions (argmax) and targets
-        preds = torch.argmax(output_seg, dim=1)  # Shape: [batch, H, W]
-        
-        # For each evaluation class
-        for cls_idx, cls_name in enumerate(self.metrics_calc.eval_classes):
-            # Get the training index for this class
-            train_idx = self.metrics_calc.eval_indices[cls_idx]
-            
-            # Get probabilities for this class
-            cls_probs = probs[:, train_idx, :, :]  # Shape: [batch, H, W]
-            
-            # Get binary predictions and targets for this class
-            cls_preds = (preds == train_idx).float()  # Shape: [batch, H, W]
-            cls_targets = (anno == train_idx).float()  # Shape: [batch, H, W]
-            
-            # Flatten and store
-            cls_probs_flat = cls_probs.flatten()
-            cls_preds_flat = cls_preds.flatten()
-            cls_targets_flat = cls_targets.flatten()
-            
-            # Only store pixels that are predicted as this class OR are actually this class
-            # This ensures we have both true positives and false positives
-            relevant_mask = (cls_preds_flat > 0) | (cls_targets_flat > 0)
-            
-            if relevant_mask.sum() > 0:
-                all_predictions[cls_name].append(cls_probs_flat[relevant_mask])
-                all_targets[cls_name].append(cls_targets_flat[relevant_mask])
+        """Positions of the eval classes in the per-class metric arrays (which exclude background)."""
+        return [idx - 1 for idx in self.metrics_calc.eval_indices]
     
     def _compute_final_results(self, accumulators, all_predictions, all_targets):
         """Compute final test results with proper AP calculation."""
@@ -194,7 +132,7 @@ class TestingEngine:
             f1 = self.metrics_calc.sanitize_value(f1)
             
             # Calculate proper AP using stored predictions
-            ap = self._compute_ap_for_class(cls, all_predictions, all_targets)
+            ap = compute_ap_for_class(cls, all_predictions, all_targets)
             ap = self.metrics_calc.sanitize_value(ap)
             
             results[cls] = {
@@ -215,74 +153,21 @@ class TestingEngine:
         
         # Add overall metrics
         confusion_matrix_labels = [cls['name'] for cls in sorted(self.config['Dataset']['train_classes'], key=lambda x: x['index'])]
+        class_results = [results[cls] for cls in self.metrics_calc.eval_classes]
         results['overall'] = {
             'mIoU_foreground': torch.mean(eval_IoU).item(),
+            'mean_precision': float(np.mean([r['precision'] for r in class_results])),
+            'mean_recall': float(np.mean([r['recall'] for r in class_results])),
+            'mean_f1': float(np.mean([r['f1_score'] for r in class_results])),
+            'mean_ap': float(np.mean([r['ap'] for r in class_results])),
             'mean_accuracy': mean_accuracy,
             'fw_iou': fw_iou,
-            'pixel_accuracy': pixel_accuracy.item(),
+            'pixel_accuracy': float(pixel_accuracy),
             'confusion_matrix': accumulators['confusion_matrix'].cpu().tolist(),
             'confusion_matrix_labels': confusion_matrix_labels
         }
         
         return results
-    
-    def _compute_ap_for_class(self, cls_name, all_predictions, all_targets):
-        """Compute Average Precision for a single class using proper method."""
-        if cls_name not in all_predictions or not all_predictions[cls_name]:
-            return 0.0
-        
-        # Concatenate all predictions and targets for this class
-        pred_probs = torch.cat(all_predictions[cls_name])  # All predicted probabilities
-        pred_targets = torch.cat(all_targets[cls_name])    # All ground truth labels
-        
-        if len(pred_probs) == 0:
-            return 0.0
-        
-        # Sort by prediction confidence (descending)
-        sorted_indices = torch.argsort(pred_probs, descending=True)
-        pred_probs = pred_probs[sorted_indices]
-        pred_targets = pred_targets[sorted_indices]
-        
-        # Calculate precision and recall at different thresholds
-        num_positives = pred_targets.sum().item()
-        if num_positives == 0:
-            return 0.0
-        
-        # Calculate cumulative true positives and false positives
-        tp = torch.cumsum(pred_targets, dim=0).float()
-        fp = torch.cumsum(1 - pred_targets, dim=0).float()
-        
-        # Calculate precision and recall
-        precision = tp / (tp + fp + 1e-6)
-        recall = tp / num_positives
-        
-        # Use VOC 2010 AP calculation method
-        ap = self._voc_ap(recall, precision)
-        return ap
-    
-    def _voc_ap(self, recall, precision):
-        """Calculate AP using VOC 2010 method."""
-        if len(recall) == 0:
-            return 0.0
-        
-        # Convert to numpy
-        recall = recall.cpu().numpy()
-        precision = precision.cpu().numpy()
-        
-        # Add sentinel values
-        mrec = np.concatenate(([0.0], recall, [1.0]))
-        mpre = np.concatenate(([0.0], precision, [0.0]))
-        
-        # Make precision monotonically decreasing
-        for i in range(len(mpre) - 1, 0, -1):
-            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-        
-        # Find points where recall changes
-        i = np.where(mrec[1:] != mrec[:-1])[0]
-        
-        # Calculate AP
-        ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-        return ap
     
     def _print_results(self, results):
         """Print test results."""

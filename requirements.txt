@@ -17,4 +17,5 @@ fvcore
 python-dotenv
 GPUtil
 scipy
-visin>=0.1
+visin>=0.2  # visin.Datasets
+pydantic>=2

@@ -312,6 +312,14 @@ class DeepLabV3PlusLateFusion(nn.Module):
             raise ValueError(f"Invalid modality: {modality}")
 
 
+def fusion_strategy_from_config(section):
+    """The fusion strategy a DeepLabV3Plus config section asks for, the same for every stage.
+
+    ``fusion_strategy`` is the key; ``fusion_type`` is its older name, still in some configs.
+    """
+    return section.get('fusion_strategy') or section.get('fusion_type') or 'residual_average'
+
+
 def build_deeplabv3plus(num_classes, mode='rgb', fusion_strategy='residual_average', pretrained=True, backbone='resnet101'):
     """
     Build DeepLabV3+ model based on configuration.

@@ -76,7 +76,7 @@ def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args)
         'saved_file_path': filepath
     }
 
-    print(f"Completed testing checkpoint")
+    print("Completed testing checkpoint")
 
     return checkpoint_data
 

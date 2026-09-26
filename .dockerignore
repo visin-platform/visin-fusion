@@ -1,0 +1,25 @@
+# Environments, outputs and secrets never go into the image
+venv*/
+.venv/
+**/__pycache__/
+*.pyc
+.git/
+.github/
+.claude/
+logs/
+runs*/
+output/
+visualizations/
+*.pth
+*.out
+integrations/.env
+.env
+
+# Datasets and paper material are mounted or archived, not built in; the small sample dataset
+# in tests/data is kept for the quick start and the tests
+paper*/
+
+# docker compose mounts
+data/
+outputs/
+.cache/

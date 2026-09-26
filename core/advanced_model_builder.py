@@ -43,7 +43,9 @@ class AdvancedModelBuilder:
     def load_checkpoint(self, model, checkpoint_path):
         """Load model weights from checkpoint."""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        # Strict: a checkpoint that does not match the model (another fusion strategy, class count or
+        # backbone) must fail, not leave the mismatched layers randomly initialised
+        model.load_state_dict(checkpoint['model_state_dict'])
         model.to(self.device)
         
         epoch = checkpoint.get('epoch', 0)

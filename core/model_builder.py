@@ -4,7 +4,7 @@
 Model builder for creating and loading CLFT models.
 """
 import torch
-from clft.clft import CLFT
+from models.clft.clft import CLFT
 
 
 class ModelBuilder:
@@ -53,6 +53,3 @@ class ModelBuilder:
         print(f"Loaded checkpoint from epoch {epoch}: {checkpoint_path}")
         return model, epoch
     
-    def get_num_classes(self):
-        """Get number of unique classes."""
-        return self.num_unique_classes

@@ -3,11 +3,9 @@
 """
 Data input handling for visualization.
 """
-import numpy as np
 from PIL import Image
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
-from utils.helpers import relabel_annotation
 
 
 class DataLoader:
@@ -46,28 +44,11 @@ class DataLoader:
         rgb = Image.open(image_path).convert('RGB')
         return rgb_normalize(rgb)
     
-    def load_annotation(self, anno_path):
-        """Load and preprocess annotation."""
-        anno = Image.open(anno_path)
-        anno = np.array(anno)
-        
-        # Apply relabeling
-        anno = relabel_annotation(anno, self.config)
-        
-        # Convert to tensor and resize
-        anno_tensor = anno.float()
-        anno_tensor = transforms.Resize(
-            (self.resize, self.resize), 
-            interpolation=transforms.InterpolationMode.NEAREST
-        )(anno_tensor)
-        
-        return anno_tensor.squeeze(0)
-    
     def load_lidar(self, lidar_path):
         """Load and preprocess LiDAR data for inference/visualization.
 
         All supported datasets use the same PNG format.  We mimic the
-        preprocessing performed by :class:`tools.dataset_png.DatasetPNG`:
+        preprocessing performed by :class:`core.dataset_png.DatasetPNG`:
         resize the image with PIL, convert to tensor, and normalize if
         parameters are available.
         """

@@ -1,4 +1,4 @@
-"""Uploading the visualize_*.py scripts' rendered frames to Visin.
+"""Uploading the stages/visualize/*.py scripts' rendered frames to Visin.
 
     run = attach_to_training(config['Log']['logdir'])
     for image_name in images:
@@ -15,9 +15,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from integrations.vision_service import parse_checkpoint_name
 
-# The kinds each visualize_*.py script renders, one subdirectory each.
+# The kinds each stages/visualize/*.py script renders, one subdirectory each.
 VISUALIZATION_KINDS = ("segment", "overlay", "compare", "correct_only")
 
 
@@ -40,6 +39,3 @@ def queue_visualizations(run: Any, epoch: int, epoch_uuid: str, output_base: str
     return queued
 
 
-def get_epoch_uuid_from_model_path(model_path: str) -> str | None:
-    """The epoch UUID in a checkpoint's file name (epoch_{num}_{uuid}.pth), if it has one."""
-    return parse_checkpoint_name(model_path)[1]

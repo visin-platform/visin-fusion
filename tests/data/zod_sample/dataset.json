@@ -1,0 +1,120 @@
+{
+  "format": 1,
+  "name": "zod",
+  "description": "ZOD sample: 28 frames downscaled 4x, for tests and the quick start",
+  "layout": {
+    "camera": "camera",
+    "lidar": "lidar_png"
+  },
+  "annotations": [
+    "annotation_camera_only",
+    "annotation_fusion",
+    "annotation_lidar_only"
+  ],
+  "splits": {
+    "train": "train.txt",
+    "val": "validation.txt",
+    "test": {
+      "day_fair": "test_day_fair.txt",
+      "day_rain": "test_day_rain.txt",
+      "night_fair": "test_night_fair.txt",
+      "night_rain": "test_night_rain.txt",
+      "snow": "test_snow.txt"
+    },
+    "visualization": "visualizations.txt"
+  },
+  "classes": [
+    {
+      "name": "background",
+      "index": 0
+    },
+    {
+      "name": "ignore",
+      "index": 1
+    },
+    {
+      "name": "vehicle",
+      "index": 2
+    },
+    {
+      "name": "sign",
+      "index": 3
+    },
+    {
+      "name": "cyclist",
+      "index": 4
+    },
+    {
+      "name": "pedestrian",
+      "index": 5
+    }
+  ],
+  "train_classes": [
+    {
+      "name": "background",
+      "index": 0,
+      "weight": 0.1,
+      "dataset_mapping": [
+        0,
+        1
+      ],
+      "color": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "vehicle",
+      "index": 1,
+      "weight": 10.0,
+      "dataset_mapping": [
+        2
+      ],
+      "color": [
+        128,
+        0,
+        128
+      ]
+    },
+    {
+      "name": "sign",
+      "index": 2,
+      "weight": 17.0,
+      "dataset_mapping": [
+        3
+      ],
+      "color": [
+        255,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "human",
+      "index": 3,
+      "weight": 20.0,
+      "dataset_mapping": [
+        4,
+        5
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ]
+    }
+  ],
+  "normalization": {
+    "lidar_mean": [
+      0.25258,
+      0.49281,
+      0.49566
+    ],
+    "lidar_std": [
+      0.23424,
+      0.03092,
+      0.16651
+    ]
+  }
+}

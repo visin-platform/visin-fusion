@@ -1,0 +1,33 @@
+name: Bug report
+description: Something fails or gives wrong results
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: The config you ran (remove anything private).
+      render: json
+  - type: textarea
+    id: log
+    attributes:
+      label: Output
+      description: The end of the failing stage's output.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Git commit or image tag (e.g. ghcr.io/visin-platform/visin-fusion:<sha>)
+  - type: input
+    id: visin
+    attributes:
+      label: Visin run
+      description: Link to the run in Visin, if it was reported

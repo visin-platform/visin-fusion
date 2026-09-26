@@ -50,7 +50,7 @@ class Visualizer:
             if not os.path.exists(rgb_path):
                 print(f'File does not exist: {rgb_path}')
             else:
-                print(f'File exists but could not be read (possibly corrupted)')
+                print('File exists but could not be read (possibly corrupted)')
             print('Skipping overlay for this image')
             return
         

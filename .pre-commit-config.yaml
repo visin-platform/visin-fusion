@@ -1,0 +1,29 @@
+# The checks CI runs, before each commit:  pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff  # the rules in ruff.toml
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+        args: [--unsafe]  # mkdocs.yml uses a !!python tag
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: detect-private-key
+  - repo: local
+    hooks:
+      - id: config-reference
+        name: config reference matches the schema
+        entry: python tools/make_config_reference.py --check
+        language: system
+        files: ^(utils/config_schema\.py|tools/make_config_reference\.py|docs/reference/config\.md)$
+        pass_filenames: false
+      - id: unit-tests
+        name: unit tests
+        entry: python -m pytest tests/unit -q
+        language: system
+        types: [python]
+        pass_filenames: false

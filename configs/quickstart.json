@@ -1,0 +1,10 @@
+{
+  "extends": "swin",
+  "Summary": "Quick start: SwinFusion fusion, ZOD sample",
+  "description": "Two short epochs of the SwinFusion preset on the 28-frame sample dataset in tests/data.",
+  "tags": ["quickstart"],
+  "Dataset": {"dataset_root": "tests/data/zod_sample"},
+  "Log": {"logdir": "logs/quickstart"},
+  "General": {"epochs": 2, "batch_size": 2, "early_stop_patience": 2, "max_checkpoints": 1},
+  "SwinFusion": {"warmup_epochs": 0}
+}

@@ -1,0 +1,46 @@
+site_name: Visin Fusion
+site_description: Camera + LiDAR semantic segmentation training (CLFT, SwinFusion/CLFTv2, MaskFormer, Mask2Former, DeepLabV3+)
+repo_url: https://github.com/visin-platform/visin-fusion
+edit_uri: edit/main/docs/
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/weather-night, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/weather-sunny, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - User guide:
+      - Configs: configs.md
+      - Datasets: datasets.md
+      - Running: running.md
+      - Metrics: metrics.md
+  - Models:
+      - CLFT: architecture/CLFT.md
+      - CLFTv2 (SwinFusion): architecture/CLFTv2.md
+      - MaskFormer: architecture/MaskFormer.md
+      - Mask2Former: architecture/Mask2Former.md
+      - DeepLabV3+: architecture/DeepLabV3Plus.md
+  - Reference:
+      - Config reference: reference/config.md
+  - Development: development.md

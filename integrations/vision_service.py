@@ -2,10 +2,10 @@
 
 Every script in this project reports through the functions here:
 
-    train_*.py       start_training_run()     the run; the training engine logs each epoch to it
-    test_*.py        report_test_results()    a test result on the tested checkpoint's epoch
-    benchmark*.py    report_benchmark()       a benchmark on the measured checkpoint's epoch
-    visualize_*.py   attach_to_training() and visualization_uploader.queue_visualizations()
+    stages/train/*.py       start_training_run()     the run; the training engine logs each epoch to it
+    stages/test/*.py        report_test_results()    a test result on the tested checkpoint's epoch
+    stages/benchmark/*.py    report_benchmark()       a benchmark on the measured checkpoint's epoch
+    stages/visualize/*.py   attach_to_training() and visualization_uploader.queue_visualizations()
 
 Configuration comes from the environment, or from ``integrations/.env``:
 
@@ -39,7 +39,7 @@ try:
     import visin
 except ImportError as exc:  # pragma: no cover - an environment problem, stated plainly
     raise ImportError(
-        "fusion-training reports to Visin through the visin package: pip install visin"
+        "visin-fusion reports to Visin through the visin package: pip install visin"
     ) from exc
 
 from utils.helpers import get_model_path, get_training_uuid_from_logs
