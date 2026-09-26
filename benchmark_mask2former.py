@@ -466,28 +466,10 @@ class Mask2FormerBenchmarker:
 
         print(f"\nBenchmark results saved to: {output_path}")
 
-        # Send results to vision service
-        try:
-            from integrations.vision_service import send_benchmark_results_from_file
-
-            if self.training_uuid:
-                success = send_benchmark_results_from_file(
-                    output_path,
-                    training_uuid=self.training_uuid,
-                    epoch_uuid=self.epoch_uuid,
-                    epoch=self.epoch
-                )
-            else:
-                success = send_benchmark_results_from_file(output_path)
-
-            if success:
-                print("Benchmark results successfully sent to vision service")
-            else:
-                print("Failed to send benchmark results to vision service")
-        except ImportError:
-            print("Warning: vision_service module not found, skipping upload to vision service")
-        except Exception as e:
-            print(f"Error sending benchmark results to vision service: {e}")
+        # Report to Visin, linked to the run and checkpoint measured
+        from integrations.vision_service import report_benchmark
+        report_benchmark(self.results, system_info, training_uuid=self.training_uuid,
+                         epoch=self.epoch, epoch_uuid=self.epoch_uuid)
 
         # Create summary DataFrame
         if self.results:

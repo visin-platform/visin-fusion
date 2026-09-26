@@ -17,9 +17,8 @@ from core.advanced_model_builder import AdvancedModelBuilder
 from core.metrics_calculator import MetricsCalculator
 from core.training_engine import TrainingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
-from integrations.training_logger import generate_training_uuid
-from integrations.vision_service import create_training, create_config, get_training_by_uuid
-from utils.helpers import get_training_uuid_from_logs, get_model_path
+from integrations.vision_service import start_training_run
+from utils.helpers import get_model_path
 
 
 class SwinTrainingEngine(TrainingEngine):
@@ -128,42 +127,6 @@ def setup_overlap_function(config):
     if dataset_name in ['zod', 'waymo', 'iseauto']:
         print(f"Using unified IoU calculation (excludes background only)")
         return find_overlap_exclude_bg_ignore
-
-
-def setup_vision_service(config, training_uuid):
-    """Setup vision service integration."""
-    model_name = config['CLI']['backbone']
-    dataset_name = config['Dataset']['name']
-    description = config.get('Summary', f"Training {model_name} on {dataset_name} dataset")
-    tags = config.get('tags', [])
-    
-    # Create config
-    config_name = f"{dataset_name} - {model_name} Config"
-    vision_config_id = create_config(name=config_name, config_data=config)
-    
-    if vision_config_id:
-        print(f"Created config in vision service: {vision_config_id}")
-        
-        # Create training
-        vision_training_id = create_training(
-            uuid=training_uuid,
-            name=description,
-            model=model_name,
-            dataset=dataset_name,
-            description='',
-            tags=tags,
-            config_id=vision_config_id
-        )
-        
-        if vision_training_id:
-            print(f"Created training in vision service: {vision_training_id}")
-            return vision_training_id
-        else:
-            print("Failed to create training in vision service")
-    else:
-        print("Failed to create config in vision service")
-    
-    return None
 
 
 def load_checkpoint_if_resume(config, model, optimizer, device):
@@ -289,26 +252,8 @@ def main():
     # Set multiprocessing
     multiprocessing.set_start_method('spawn', force=True)
     
-    # Generate or retrieve training UUID
-    is_transfer = config['General'].get('transfer_learning', False)
-    vision_training_id = None
-    if config['General']['resume_training'] and not is_transfer:
-        # Try to get existing training_uuid and vision_training_id from logs
-        training_uuid, vision_training_id = get_training_uuid_from_logs(config['Log']['logdir'])
-        if training_uuid:
-            print(f"Resuming training with existing UUID: {training_uuid}")
-            if vision_training_id:
-                print(f"Using existing vision training ID: {vision_training_id}")
-        else:
-            print("Warning: Could not find existing training_uuid, generating new one")
-            training_uuid = generate_training_uuid()
-            print(f"New Training UUID: {training_uuid}")
-    else:
-        training_uuid = generate_training_uuid()
-        if is_transfer:
-            print(f"Transfer learning - new Training UUID: {training_uuid}")
-        else:
-            print(f"Training UUID: {training_uuid}")
+    # The Visin run: a new one, or the one a resumed training reports into
+    run, training_uuid = start_training_run(config, model=config['CLI']['backbone'])
     
     # Setup device
     device = torch.device(config['General']['device'] 
@@ -359,20 +304,6 @@ def main():
     # Setup metrics calculator
     metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
     
-    # Setup vision service
-    if training_uuid:
-        if config['General']['resume_training'] and not is_transfer and vision_training_id is None:
-            # Look up existing training by UUID only if we don't have it from logs
-            print("Resuming training - looking up existing training record...")
-            vision_training_id = get_training_by_uuid(training_uuid)
-            if vision_training_id:
-                print(f"Found existing training in vision service: {vision_training_id}")
-            else:
-                print("Warning: Could not find existing training in vision service")
-        elif not config['General']['resume_training'] or is_transfer:
-            # Create new training (fresh start or transfer learning)
-            vision_training_id = setup_vision_service(config, training_uuid)
-    
     # Load checkpoint if resuming
     start_epoch = load_checkpoint_if_resume(config, model, optimizer, device)
     
@@ -411,19 +342,20 @@ def main():
         training_uuid=training_uuid,
         log_dir=config['Log']['logdir'],
         device=device,
-        vision_training_id=vision_training_id,
+        run=run,
         scheduler=scheduler,
     )
     
-    # Train
+    # Train. Leaving the block finishes the run: completed, or failed if it raised.
     modality = config['CLI']['mode']
-    training_engine.train_full(
-        train_dataloader, 
-        valid_dataloader, 
-        modality, 
-        num_classes,
-        start_epoch=start_epoch
-    )
+    with run:
+        training_engine.train_full(
+            train_dataloader, 
+            valid_dataloader, 
+            modality, 
+            num_classes,
+            start_epoch=start_epoch
+        )
 
 
 if __name__ == '__main__':

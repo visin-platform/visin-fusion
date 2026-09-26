@@ -168,12 +168,52 @@ def get_all_checkpoint_paths(config, ignore_model_path=False):
         except:
             return 0
     
+    # Only the current run's checkpoints: when an earlier run of the config
+    # shares this directory, its higher epoch numbers would otherwise win, and
+    # resuming would continue the wrong run.
+    epochs_dir = os.path.join(config['Log']['logdir'], 'epochs')
+    run_uuid = current_training_uuid(epochs_dir)
+    if run_uuid:
+        def is_current(filepath):
+            name = os.path.basename(filepath)
+            if not name.startswith('epoch_'):
+                return True
+            log = os.path.join(epochs_dir, name[:-len('.pth')] + '.json')
+            try:
+                with open(log, 'r') as f:
+                    return belongs_to_run(json.load(f), run_uuid)
+            except (OSError, ValueError):
+                return True  # no log to say otherwise
+        files = [f for f in files if is_current(f)]
+
     # Sort files by epoch number
     sorted_files = sorted(files, key=get_checkpoint_num)
     return sorted_files
 
+def current_training_uuid(epochs_dir):
+    """The training UUID in the newest epoch log: the run a logs directory is for now.
+
+    A config trained afresh into a directory an earlier run used shares it with
+    that run's logs and checkpoints. Picking the best checkpoint, or pruning,
+    across both would test a stale run's checkpoint or delete the new run's.
+    """
+    files = glob.glob(os.path.join(epochs_dir, 'epoch_*.json'))
+    if not files:
+        return None
+    try:
+        with open(max(files, key=os.path.getmtime), 'r') as f:
+            return json.load(f).get('training_uuid')
+    except (OSError, ValueError):
+        return None
+
+
+def belongs_to_run(epoch_data, training_uuid):
+    """Whether an epoch log is the given run's; logs that name no run count as anyone's."""
+    return not training_uuid or not epoch_data.get('training_uuid') or epoch_data['training_uuid'] == training_uuid
+
+
 def get_best_checkpoint_path(config):
-    """Find the checkpoint with the best validation mIoU."""
+    """Find the current run's checkpoint with the best validation mIoU."""
     import re
     logdir = config['Log']['logdir']
     epochs_dir = os.path.join(logdir, 'epochs')
@@ -184,6 +224,7 @@ def get_best_checkpoint_path(config):
     
     best_epoch = None
     best_miou = -1.0
+    run_uuid = current_training_uuid(epochs_dir)
     
     for file in os.listdir(epochs_dir):
         if file.endswith('.json'):
@@ -191,6 +232,8 @@ def get_best_checkpoint_path(config):
             try:
                 with open(filepath, 'r') as f:
                     data = json.load(f)
+                    if not belongs_to_run(data, run_uuid):
+                        continue  # an earlier run's, in the same logs directory
                     val_miou = data['results']['val'].get('mean_iou', 0)
                     if val_miou > best_miou:
                         best_miou = val_miou
@@ -303,8 +346,11 @@ def manage_checkpoints_by_miou(config, log_dir):
     if len(checkpoint_files) <= max_checkpoints:
         return  # No need to delete anything
     
-    # Get validation mIoU for each checkpoint from JSON files
+    # Get validation mIoU for each checkpoint from JSON files. Only the current
+    # run's are ranked, and so only they can be deleted: an earlier run's are
+    # left as they are rather than traded against the new run's.
     checkpoints_with_miou = []
+    run_uuid = current_training_uuid(epochs_dir)
     
     for checkpoint_path in checkpoint_files:
         checkpoint_filename = os.path.basename(checkpoint_path)
@@ -324,6 +370,8 @@ def manage_checkpoints_by_miou(config, log_dir):
                     try:
                         with open(json_files[0], 'r') as f:
                             json_data = json.load(f)
+                        if not belongs_to_run(json_data, run_uuid):
+                            continue
                         
                         # Get validation mIoU
                         val_miou = json_data.get('results', {}).get('val', {}).get('mean_iou', -1.0)
@@ -445,9 +493,9 @@ def get_training_uuid_from_logs(log_dir):
     if not epoch_files:
         return None, None
     
-    # Get the most recent epoch file
-    epoch_files.sort()
-    latest_epoch_file = epoch_files[-1]
+    # The most recently written epoch file: the current run's, even when an
+    # earlier run's logs remain here (sorting names put epoch_9 after epoch_10)
+    latest_epoch_file = max(epoch_files, key=os.path.getmtime)
     
     try:
         with open(latest_epoch_file, 'r') as f:

@@ -18,7 +18,7 @@ from core.model_builder import ModelBuilder
 from core.metrics_calculator import MetricsCalculator
 from core.testing_engine import TestingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
-from integrations.vision_service import send_test_results_from_file
+from integrations.vision_service import report_test_results
 from utils.helpers import get_all_checkpoint_paths, sanitize_for_json, get_checkpoint_path_with_fallback
 
 
@@ -245,15 +245,10 @@ def main():
     all_results = run_test_suite(tester, config, test_data_files, test_data_path, num_classes)
     
     # Save results
-    results_file = save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid)
+    save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid)
     
-    # Upload to vision service
-    print("Uploading test results to vision service...")
-    upload_success = send_test_results_from_file(results_file)
-    if upload_success:
-        print("✅ Test results successfully uploaded to vision service")
-    else:
-        print("❌ Failed to upload test results to vision service")
+    # Report to Visin, as a test result on the checkpoint's epoch
+    report_test_results(config, epoch_num, epoch_uuid, all_results, test_uuid=test_uuid)
     
     print(f'Completed testing checkpoint')
 

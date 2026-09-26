@@ -20,9 +20,9 @@ from tqdm import tqdm
 from models.deeplabv3plus import build_deeplabv3plus
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from integrations.training_logger import generate_training_uuid, log_epoch_results
-from integrations.vision_service import create_training, create_config, get_training_by_uuid
-from utils.helpers import get_model_path, manage_checkpoints_by_miou, get_training_uuid_from_logs
+from integrations.training_logger import log_epoch_results
+from integrations.vision_service import start_training_run
+from utils.helpers import get_model_path, manage_checkpoints_by_miou
 from utils.system_monitor import get_epoch_system_snapshot, print_system_info
 
 
@@ -97,34 +97,6 @@ def setup_lr_scheduler(optimizer, config):
     
     return scheduler
 
-
-def setup_vision_service(config, training_uuid):
-    """Setup vision service integration."""
-    model_name = config['CLI']['backbone']
-    dataset_name = config['Dataset']['name']
-    description = config.get('Summary', f"Training {model_name} on {dataset_name} dataset")
-    tags = config.get('tags', [])
-    
-    config_name = f"{dataset_name} - {model_name} Config"
-    vision_config_id = create_config(name=config_name, config_data=config)
-    
-    if vision_config_id:
-        print(f"Created config in vision service: {vision_config_id}")
-        vision_training_id = create_training(
-            uuid=training_uuid,
-            name=description,
-            model=model_name,
-            dataset=dataset_name,
-            description='',
-            tags=tags,
-            config_id=vision_config_id
-        )
-        
-        if vision_training_id:
-            print(f"Created training in vision service: {vision_training_id}")
-            return vision_training_id
-    
-    return None
 
 def relabel_classes(anno, config):
     """Relabel ground truth annotations according to train_classes mapping."""
@@ -311,22 +283,8 @@ def main():
     np.random.seed(config['General']['seed'])
     multiprocessing.set_start_method('spawn', force=True)
     
-    # Generate or retrieve training UUID
-    vision_training_id = None
-    if config['General']['resume_training']:
-        # Try to get existing training_uuid and vision_training_id from logs
-        training_uuid, vision_training_id = get_training_uuid_from_logs(config['Log']['logdir'])
-        if training_uuid:
-            print(f"Resuming training with existing UUID: {training_uuid}")
-            if vision_training_id:
-                print(f"Using existing vision training ID: {vision_training_id}")
-        else:
-            print("Warning: Could not find existing training_uuid, generating new one")
-            training_uuid = generate_training_uuid()
-            print(f"New Training UUID: {training_uuid}")
-    else:
-        training_uuid = generate_training_uuid()
-        print(f"Training UUID: {training_uuid}")
+    # The Visin run: a new one, or the one a resumed training reports into
+    run, training_uuid = start_training_run(config, model=config['CLI']['backbone'])
     
     # Setup device
     device = torch.device(config['General']['device'] 
@@ -371,19 +329,6 @@ def main():
     find_overlap_func = find_overlap_exclude_bg_ignore
     metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
     
-    # Setup vision service
-    if training_uuid:
-        if config['General']['resume_training'] and vision_training_id is None:
-            # Look up existing training by UUID only if we don't have it from logs
-            print("Resuming training - looking up existing training record...")
-            vision_training_id = get_training_by_uuid(training_uuid)
-            if vision_training_id:
-                print(f"Found existing training in vision service: {vision_training_id}")
-            else:
-                print("Warning: Could not find existing training in vision service")
-        elif not config['General']['resume_training']:
-            # Create new training
-            vision_training_id = setup_vision_service(config, training_uuid)
     
     # Load checkpoint if resuming
     start_epoch = load_checkpoint_if_resume(config, model, optimizer, scheduler, device)
@@ -462,7 +407,7 @@ def main():
         # Log epoch with CLFT-style format (after scheduler step so LR is updated)
         results_dict = metrics_calc.prepare_results_dict(train_metrics, val_metrics)
         
-        epoch_file = log_epoch_results(
+        epoch_uuid = log_epoch_results(
             epoch=epoch,
             training_uuid=training_uuid,
             results=results_dict,
@@ -470,13 +415,8 @@ def main():
             learning_rate=optimizer.param_groups[0]['lr'],
             epoch_time=epoch_time,
             system_info=system_snapshot,
-            vision_training_id=vision_training_id
+            run=run
         )
-        
-        # Extract epoch_uuid from the logged file path
-        epoch_uuid = os.path.basename(epoch_file).replace(f'epoch_{epoch}_', '').replace('.json', '')
-        
-        # Vision service upload is already handled by log_epoch_results above
         
         # Save checkpoint every epoch
         save_checkpoint(model, optimizer, scheduler, epoch, config, log_dir, epoch_uuid)
@@ -498,6 +438,9 @@ def main():
                 break
     
     print(f"\nTraining completed! Best validation mIoU: {best_val_iou:.4f}")
+    # Marks the run completed. A crash never gets here: visin marks the run
+    # failed as the process exits, after sending the epochs it has.
+    run.finish()
 
 
 if __name__ == '__main__':

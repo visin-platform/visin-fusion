@@ -17,3 +17,4 @@ fvcore
 python-dotenv
 GPUtil
 scipy
+visin>=0.1

@@ -7,7 +7,7 @@ import os
 import json
 import datetime
 import uuid
-from integrations.vision_service import send_test_results_from_file
+from integrations.vision_service import report_test_results
 from utils.helpers import sanitize_for_json
 
 
@@ -64,12 +64,8 @@ def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args)
         print(f'Epoch UUID: {epoch_uuid}')
     print(f'Test UUID: {test_uuid}')
 
-    print("Uploading individual test results to vision service...")
-    upload_success = send_test_results_from_file(filepath)
-    if upload_success:
-        print("✅ Individual test results successfully uploaded to vision service")
-    else:
-        print("❌ Failed to upload individual test results to vision service")
+    # Report to Visin, as a test result on the checkpoint's epoch
+    report_test_results(config, epoch_num, epoch_uuid, checkpoint_results, test_uuid=test_uuid)
 
     # Return checkpoint data
     checkpoint_data = {

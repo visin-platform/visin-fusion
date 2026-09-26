@@ -308,19 +308,10 @@ class EnsembleBenchmarker:
 
         print(f"\nResults saved to: {output_path}")
         
-        # Send results to vision service
-        try:
-            from integrations.vision_service import send_benchmark_results_from_file
-            
-            success = send_benchmark_results_from_file(output_path)
-            if success:
-                print("Benchmark results successfully sent to vision service")
-            else:
-                print("Failed to send benchmark results to vision service")
-        except ImportError:
-            print("Warning: vision_service module not found, skipping upload to vision service")
-        except Exception as e:
-            print(f"Error sending benchmark results to vision service: {e}")
+        # Report to Visin. An ensemble has no training run of its own to link
+        # the benchmark to, so report_benchmark says so and sends nothing.
+        from integrations.vision_service import report_benchmark
+        report_benchmark(self.results, system_info, training_uuid=None)
 
     def create_summary_table(self, output_path=None):
         """Create a summary table of results."""

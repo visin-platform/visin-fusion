@@ -10,15 +10,14 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.amp import autocast, GradScaler
 from utils.helpers import relabel_annotation, adjust_learning_rate, save_model_dict, EarlyStopping, manage_checkpoints_by_miou
 from integrations.training_logger import log_epoch_results
-from integrations.vision_service import send_epoch_results_from_file
 from utils.system_monitor import get_epoch_system_snapshot
 
 
 class TrainingEngine:
     """Handles the training loop and epoch execution."""
     
-    def __init__(self, model, optimizer, criterion, metrics_calculator, config, 
-                 training_uuid, log_dir, device, vision_training_id=None):
+    def __init__(self, model, optimizer, criterion, metrics_calculator, config,
+                 training_uuid, log_dir, device, run=None):
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
@@ -27,7 +26,7 @@ class TrainingEngine:
         self.training_uuid = training_uuid
         self.log_dir = log_dir
         self.device = device
-        self.vision_training_id = vision_training_id
+        self.run = run  # the Visin run epochs are reported to (visin.Run), if any
         self.writer = SummaryWriter()
         self.early_stopping = EarlyStopping(config)
         self.scaler = GradScaler('cuda')
@@ -165,6 +164,7 @@ class TrainingEngine:
         epochs = self.config['General']['epochs']
         
         last_epoch_uuid = None
+        last_epoch = start_epoch - 1
         for epoch in range(start_epoch, epochs):
             epoch_start_time = time.time()
             
@@ -195,6 +195,7 @@ class TrainingEngine:
                 epoch, train_metrics, val_metrics, lr, epoch_time, system_info
             )
             last_epoch_uuid = epoch_uuid  # Store for final checkpoint
+            last_epoch = epoch
             
             # Save checkpoints
             self._handle_checkpoints(epoch, val_metrics, epoch_uuid)
@@ -206,9 +207,11 @@ class TrainingEngine:
             if self.early_stopping.early_stop_trigger:
                 break
         
-        # Save final checkpoint with UUID from last epoch
+        # Save final checkpoint under the epoch it holds. Named after the
+        # configured last epoch, an early-stopped run's checkpoint paired one
+        # epoch's number with another epoch's UUID.
         print('Saving final model checkpoint...')
-        final_epoch = epochs - 1 if epochs > 0 else 0
+        final_epoch = max(last_epoch, 0)
         save_model_dict(self.config, final_epoch, self.model, self.optimizer, last_epoch_uuid)
         self.writer.close()
         print('Training Complete')
@@ -229,24 +232,15 @@ class TrainingEngine:
         self.writer.flush()  # keep writer open; flush to disk without closing
     
     def _log_and_upload_results(self, epoch, train_metrics, val_metrics, lr, epoch_time, system_info=None):
-        """Log results locally and upload to vision service."""
-        epoch_uuid = None
-        
-        if self.training_uuid and self.log_dir:
-            results = self.metrics_calc.prepare_results_dict(train_metrics, val_metrics)
-            logged_file_path = log_epoch_results(
-                epoch, self.training_uuid, results, self.log_dir, 
-                learning_rate=lr, epoch_time=epoch_time, system_info=system_info,
-                vision_training_id=self.vision_training_id
-            )
-            
-            # Extract epoch UUID
-            import os
-            epoch_uuid = os.path.basename(logged_file_path).replace(
-                f'epoch_{epoch}_', ''
-            ).replace('.json', '')
-        
-        return epoch_uuid
+        """Log results locally and report them to Visin. Returns the epoch's UUID."""
+        if not (self.training_uuid and self.log_dir):
+            return None
+        results = self.metrics_calc.prepare_results_dict(train_metrics, val_metrics)
+        return log_epoch_results(
+            epoch, self.training_uuid, results, self.log_dir,
+            learning_rate=lr, epoch_time=epoch_time, system_info=system_info,
+            run=self.run
+        )
     
     def _handle_checkpoints(self, epoch, val_metrics, epoch_uuid):
         """Handle checkpoint saving and early stopping."""

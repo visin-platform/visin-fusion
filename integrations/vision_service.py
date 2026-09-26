@@ -1,423 +1,188 @@
-import requests
+"""Reporting to Visin, through the ``visin`` package.
+
+Every script in this project reports through the functions here:
+
+    train_*.py       start_training_run()     the run; the training engine logs each epoch to it
+    test_*.py        report_test_results()    a test result on the tested checkpoint's epoch
+    benchmark*.py    report_benchmark()       a benchmark on the measured checkpoint's epoch
+    visualize_*.py   attach_to_training() and visualization_uploader.queue_visualizations()
+
+Configuration comes from the environment, or from ``integrations/.env``:
+
+    VISIN_TOKEN    a project token (the project's Settings -> API Tokens in Visin)
+    VISIN_URL      the Visin API; defaults to this project's deployment, below
+    VISIN_MODE     ``offline`` on a node with no route to Visin; send later with ``visin sync``
+
+With no ``VISIN_TOKEN`` nothing is reported and every script runs as before.
+``visin check --write`` tests the setup from the command line.
+
+Training creates the run. The test, benchmark and visualization scripts run
+afterwards as separate processes and report into that run, finding it by the
+training UUID in the epoch logs; they never change its status, so a crashed
+test script cannot mark a finished training as failed.
+"""
+
+from __future__ import annotations
+
+import glob
 import json
-from datetime import datetime
-import uuid
+import logging
 import os
+import re
+import sys
+import uuid
+from typing import Any
+
 from dotenv import load_dotenv
-import urllib3
 
-# Suppress SSL certificate warnings for development
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+try:
+    import visin
+except ImportError as exc:  # pragma: no cover - an environment problem, stated plainly
+    raise ImportError(
+        "fusion-training reports to Visin through the visin package: pip install visin"
+    ) from exc
 
-# Load environment variables from .env file
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
+from utils.helpers import get_model_path, get_training_uuid_from_logs
 
-VISION_API_BASE_URL = "https://vision-api.visin.eu/api"
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-# The training schema caps these server-side; overrunning them fails validation
-# with a 400 instead of truncating.
-MAX_NAME_LENGTH = 200
-MAX_DESCRIPTION_LENGTH = 1000
+# The deployment this project reports to. The visin package has no default
+# address, on purpose; this project keeps one, so a job that sets only
+# VISIN_TOKEN goes on reporting where it always has.
+DEFAULT_VISIN_URL = "https://vision-api.visin.eu"
+if os.getenv("VISIN_TOKEN") and not (os.getenv("VISIN_URL") or os.getenv("VISIN_API_URL")):
+    os.environ["VISIN_URL"] = DEFAULT_VISIN_URL
 
-def get_auth_headers():
-    """Get authorization headers for API requests."""
-    token = os.getenv('VISIN_TOKEN')
-    if token:
-        return {'Authorization': f'Bearer {token}'}
-    return {}
+# This project does not configure logging; show visin's lines like the scripts'
+# own prints: which run, what was sent, what failed.
+if not logging.getLogger().handlers:
+    visin.enable_console_logging(stream=sys.stdout)
 
-def get_training_by_uuid(training_uuid):
-    """
-    Get training ID by UUID.
-    
-    Args:
-        training_uuid (str): UUID of the training
-    
-    Returns:
-        str or None: Training ID (_id) if found, None if not found or failed
-    """
-    url = f"{VISION_API_BASE_URL}/trainings/uuid/{training_uuid}"
-    
-    try:
-        response = requests.get(url, headers=get_auth_headers(), timeout=10, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            training_id = data.get("data", {}).get("_id")
-            return training_id
-        else:
-            print(f"Training not found for UUID {training_uuid}: {data.get('message')}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when getting training by UUID: {e}")
-        return None
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse response JSON: {e}")
-        return None
+# The UUID an epoch of a run always has. Checkpoint file names carry it
+# (epoch_{n}_{uuid}.pth), which is how the later scripts find the epoch.
+epoch_uuid_for = visin.epoch_uuid_for
+
+_CHECKPOINT_NAME = re.compile(r"epoch_(\d+)_([0-9a-fA-F-]{36})\.pth$")
 
 
-def create_training(uuid, name, model, dataset, description=None, status="running", tags=None, config_id=None):
-    """
-    Create a new training run in the vision service.
-    
-    Args:
-        uuid (str): Unique identifier for the training
-        name (str): Name of the training run
-        model (str): Model type (e.g., 'clft', 'clfcn')
-        dataset (str): Dataset name (e.g., 'zod', 'waymo')
-        description (str, optional): Description of the training
-        status (str, optional): Initial status, defaults to 'pending'
-        tags (list, optional): List of tags for the training
-        config_id (str, optional): ID of the associated config
-    
-    Returns:
-        str or None: Training ID if successful, None if failed
-    """
-    url = f"{VISION_API_BASE_URL}/trainings"
+def parse_checkpoint_name(path: str) -> tuple[int | None, str | None]:
+    """The epoch number and epoch UUID in a checkpoint's file name, if it has them."""
+    match = _CHECKPOINT_NAME.search(os.path.basename(path))
+    if not match:
+        return None, None
+    return int(match.group(1)), match.group(2)
 
-    full_name = (name or '').strip()
 
-    # The API no longer accepts free-form `model`/`dataset` fields: the dataset
-    # goes in `datasetId` (shown as-is in the UI) and everything else has to
-    # travel under `metadata`, otherwise it is silently dropped on the server.
-    payload = {
-        "uuid": uuid,
-        "status": status,
-        "name": full_name[:MAX_NAME_LENGTH],
-        "datasetId": dataset,
-        "metadata": {"model": model, "dataset": dataset}
-    }
-
-    # Callers pass the config Summary as the name, which can exceed the name
-    # limit — keep the untruncated text in the description rather than lose it.
-    if not description and len(full_name) > MAX_NAME_LENGTH:
-        description = full_name
-
-    if description:
-        payload["description"] = description[:MAX_DESCRIPTION_LENGTH]
-
-    if config_id:
-        payload["configId"] = config_id
-
-    if tags:
-        payload["tags"] = tags
-
-    try:
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            training_id = data.get("data", {}).get("_id")
-            return training_id
-        else:
-            print(f"Failed to create training: {data.get('message')}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when creating training: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response body: {e.response.text}")
-        return None
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse response JSON: {e}")
-        return None
-
-def send_epoch_results_from_file(training_id, epoch_num, results_file_path):
-    """
-    Send epoch results from a logged JSON file to the vision service.
-    
-    Args:
-        training_id (str): ID of the training run
-        epoch_num (int): Epoch number
-        results_file_path (str): Path to the JSON file containing epoch results
-    
-    Returns:
-        bool: True if successful, False if failed
-    """
-    try:
-        # Read the logged JSON file
-        with open(results_file_path, 'r') as f:
-            payload = json.load(f)
-        
-        # Update the training_uuid to match the training_id
-        payload["training_uuid"] = training_id
-        payload["trainingId"] = training_id
-        
-        url = f"{VISION_API_BASE_URL}/epochs/upload"
-        
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            return True
-        else:
-            print(f"Failed to send epoch results: {data.get('message')}")
-            return False
-    except FileNotFoundError:
-        print(f"Results file not found: {results_file_path}")
-        return False
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse results JSON file: {e}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when sending epoch results: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error when sending epoch results: {e}")
-        return False
-
-def create_config(name, config_data, config_uuid=None):
-    """
-    Create a new configuration in the vision service.
-    
-    Args:
-        name (str): Name of the configuration
-        config_data (dict): The configuration data
-        config_uuid (str, optional): UUID for the config, auto-generated if not provided
-    
-    Returns:
-        str or None: Config ID if successful, None if failed
-    """
-    if config_uuid is None:
-        config_uuid = str(uuid.uuid4())
-    
-    # Use the upload endpoint for config data
-    url = f"{VISION_API_BASE_URL}/configs/upload"
-    
-    # Extract summary from config
-    summary = config_data.get('Summary', f"Training config for {name}")
-    
-    # Extract config name from the name parameter (remove extra parts)
-    config_name = name.replace(' Config', '').split(' - ')[-1]  # Extract just the config part
-    
-    payload = {
-        "config_data": config_data,
-        "Summary": summary,
-        "config_name": config_name
-    }
-    
-    try:
-        print(f"Creating config with config_name={config_name}, Summary={summary}")
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            config_id = data.get("data", {}).get("_id")
-            return config_id
-        else:
-            print(f"Failed to create config: {data.get('message')}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when creating config: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response body: {e.response.text}")
-        return None
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse response JSON: {e}")
-        return None
-
-def send_test_results_from_file(results_file_path):
-    """
-    Send test results from a logged JSON file to the vision service.
-    
-    Args:
-        results_file_path (str): Path to the JSON file containing test results
-    
-    Returns:
-        bool: True if successful, False if failed
-    """
-    try:
-        # Read the logged JSON file
-        with open(results_file_path, 'r') as f:
-            payload = json.load(f)
-        
-        url = f"{VISION_API_BASE_URL}/test-results/upload"
-        
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("success"):
-            print(f"Successfully uploaded test results to vision service")
-            return True
-        else:
-            print(f"Failed to upload test results: {data.get('message')}")
-            return False
-    except FileNotFoundError:
-        print(f"Test results file not found: {results_file_path}")
-        return False
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse test results JSON file: {e}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when uploading test results: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error when uploading test results: {e}")
-        return False
-
-def send_benchmark_results_from_file(results_file_path, training_uuid=None, epoch_uuid=None, epoch=None):
-    """
-    Send benchmark results from a logged JSON file to the vision service.
-    
-    Args:
-        results_file_path (str): Path to the JSON file containing benchmark results
-        training_uuid (str, optional): UUID of the training run this benchmark belongs to
-        epoch_uuid (str, optional): UUID of the epoch this benchmark belongs to
-        epoch (int, optional): Epoch number this benchmark belongs to
-    
-    Returns:
-        bool: True if successful, False if failed
-    """
-    try:
-        # Read the logged JSON file
-        with open(results_file_path, 'r') as f:
-            data = json.load(f)
-        
-        # Convert timestamp to ISO format if needed
-        timestamp = data.get('timestamp')
-        if timestamp and 'T' not in timestamp:
-            # Convert '2023-01-01 00:00:00' to '2023-01-01T00:00:00.000Z'
-            dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-            timestamp = dt.isoformat() + '.000Z'
-        
-        payload = {
-            'timestamp': timestamp,
-            'system_info': data.get('system_info', {}),
-            'results': data.get('results', [])
-        }
-        
-        # Add optional fields if provided
+def training_uuid_for_epoch(log_dir: str, epoch_uuid: str) -> str | None:
+    """The training an epoch belongs to, from its log file (logs/.../epochs/epoch_{n}_{uuid}.json)."""
+    for path in glob.glob(os.path.join(log_dir, "epochs", f"epoch_*_{epoch_uuid}.json")):
+        try:
+            with open(path) as handle:
+                training_uuid = json.load(handle).get("training_uuid")
+        except (OSError, ValueError):
+            continue
         if training_uuid:
-            payload['training_uuid'] = training_uuid
-        if epoch_uuid:
-            payload['epoch_uuid'] = epoch_uuid
-        if epoch is not None:
-            payload['epoch'] = epoch
-        
-        url = f"{VISION_API_BASE_URL}/benchmarks"
-        
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30, verify=False)
-        response.raise_for_status()
-        response_data = response.json()
-        if response_data.get("success"):
-            print(f"Successfully uploaded benchmark results to vision service")
-            return True
-        else:
-            print(f"Failed to upload benchmark results: {response_data.get('message')}")
-            return False
-    except FileNotFoundError:
-        print(f"Benchmark results file not found: {results_file_path}")
-        return False
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse benchmark results JSON file: {e}")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when uploading benchmark results: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error when uploading benchmark results: {e}")
-        return False
+            return training_uuid
+    return None
 
-def upload_visualization(epoch_uuid, file_path, viz_type, metadata=None):
+
+def training_uuid_for_checkpoint(checkpoint_path: str) -> str | None:
+    """The training a checkpoint belongs to, from its epoch's log beside the checkpoints directory."""
+    _, epoch_uuid = parse_checkpoint_name(checkpoint_path)
+    if not epoch_uuid:
+        return None
+    log_dir = os.path.dirname(os.path.dirname(os.path.abspath(checkpoint_path)))
+    return training_uuid_for_epoch(log_dir, epoch_uuid)
+
+
+def start_training_run(config: dict[str, Any], *, model: str) -> tuple[visin.Run, str]:
+    """Register this training with Visin, or pick up the run it is resuming.
+
+    Returns the run and the training UUID. The UUID is this project's own
+    record (epoch logs and checkpoint names carry it), so it exists whether or
+    not Visin is configured.
+
+    - A fresh training gets a new UUID and a new run, with the config attached.
+    - A resumed one (General.resume_training) takes its UUID from the epoch logs
+      in Log.logdir and reports into the same run; nothing is created twice.
+    - General.create_new_training or General.transfer_learning forces a fresh run,
+      and so does General.reset_lr: its epochs start again from 0, and a run
+      keeps the first values recorded for an epoch number.
     """
-    Upload a visualization file to the vision service.
-    
-    This function:
-    1. Requests a signed upload URL from the API
-    2. Uploads the file directly to MinIO
-    3. Creates the visualization record in the database
-    
-    Args:
-        epoch_uuid (str): UUID of the epoch this visualization belongs to
-        file_path (str): Path to the visualization file
-        viz_type (str): Type of visualization (e.g., 'segment', 'overlay', 'compare', 'correct_only')
-        metadata (dict, optional): Additional metadata for the visualization
-    
-    Returns:
-        dict or None: Visualization data if successful, None if failed
+    general = config["General"]
+    fresh = general.get("create_new_training") or general.get("transfer_learning") or general.get("reset_lr")
+    training_uuid = None
+    if general.get("resume_training") and not fresh:
+        # The run of the checkpoint being resumed, which the logs directory may
+        # share with an earlier run of the same config.
+        checkpoint = get_model_path(config)
+        training_uuid = training_uuid_for_checkpoint(checkpoint) if checkpoint else None
+        training_uuid = training_uuid or get_training_uuid_from_logs(config["Log"]["logdir"])[0]
+        if not training_uuid:
+            print("No earlier run in the epoch logs; starting a new one")
+    resumed_locally = training_uuid is not None
+    training_uuid = training_uuid or str(uuid.uuid4())
+
+    dataset = config["Dataset"]["name"]
+    run = visin.init(
+        config.get("Summary") or f"Training {model} on {dataset} dataset",
+        training_uuid=training_uuid,
+        model=model,
+        dataset=dataset,
+        tags=config.get("tags") or None,
+    )
+    # Visin knows whether it already had the run; offline, only the logs do.
+    resumed = run.resumed if run.resumed is not None else resumed_locally
+    if not resumed:
+        run.log_config(config, name=model)
+    print(f"Training UUID: {training_uuid} ({'resumed' if resumed else 'new'} run; Visin: {run.mode})")
+    return run, training_uuid
+
+
+def attach_to_training(log_dir: str, *, epoch_uuid: str | None = None) -> visin.Run:
+    """The run a post-training script reports into, found through the epoch logs.
+
+    With ``epoch_uuid`` (the tested checkpoint's), the run that epoch belongs
+    to; otherwise the run of the newest epoch log. Reporting only: the run's
+    status stays whatever training left it at. Returns a run that reports
+    nothing when the logs name no training.
     """
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        return None
-    
-    filename = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
-    
-    # Determine mimetype based on extension
-    ext = os.path.splitext(file_path)[1].lower()
-    mimetype_map = {
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg'
-    }
-    mimetype = mimetype_map.get(ext, 'image/png')
-    
-    try:
-        # Step 1: Get signed upload URL
-        viz_uuid = str(uuid.uuid4())
-        upload_url_request = {
-            "epoch_uuid": epoch_uuid,
-            "filename": filename,
-            "type": viz_type,
-            "mimetype": mimetype
-        }
-        
-        url = f"{VISION_API_BASE_URL}/visualizations/upload-url"
-        response = requests.post(url, json=upload_url_request, headers=get_auth_headers(), timeout=10, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("success"):
-            print(f"Failed to get upload URL: {data.get('message')}")
-            return None
-        
-        upload_url = data["data"]["uploadUrl"]
-        viz_uuid = data["data"]["visualization_uuid"]
-        file_id = data["data"]["fileId"]
-        
-        # Step 2: Upload file to MinIO
-        with open(file_path, 'rb') as f:
-            upload_response = requests.put(
-                upload_url, 
-                data=f,
-                headers={'Content-Type': mimetype},
-                timeout=30
-            )
-            upload_response.raise_for_status()
-        
-        # Step 3: Create visualization record
-        create_request = {
-            "epoch_uuid": epoch_uuid,
-            "visualization_uuid": viz_uuid,
-            "filename": filename,
-            "type": viz_type,
-            "fileId": file_id,
-            "mimetype": mimetype,
-            "size": file_size
-        }
-        
-        if metadata:
-            create_request["metadata"] = metadata
-        
-        url = f"{VISION_API_BASE_URL}/visualizations"
-        response = requests.post(url, json=create_request, headers=get_auth_headers(), timeout=10, verify=False)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get("success"):
-            print(f"Successfully uploaded {viz_type} visualization: {filename}")
-            return data.get("data")
-        else:
-            print(f"Failed to create visualization record: {data.get('message')}")
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed when uploading visualization: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response body: {e.response.text}")
-        return None
-    except Exception as e:
-        print(f"Unexpected error when uploading visualization: {e}")
-        return None
+    training_uuid = training_uuid_for_epoch(log_dir, epoch_uuid) if epoch_uuid else None
+    training_uuid = training_uuid or get_training_uuid_from_logs(log_dir)[0]
+    if not training_uuid:
+        print(f"Visin: no training UUID in the epoch logs under {log_dir}; not reporting")
+        return visin.Run.disabled()
+    return visin.Run.attach(training_uuid, mark_status=False)
+
+
+def report_test_results(
+    config: dict[str, Any],
+    epoch: int,
+    epoch_uuid: str | None,
+    test_results: dict[str, Any],
+    *,
+    test_uuid: str | None = None,
+) -> None:
+    """Send one checkpoint's test results, as a test result on its epoch.
+
+    ``test_uuid`` is the id the local results file records, so a repeat of the
+    same upload is recognised rather than stored twice.
+    """
+    with attach_to_training(config["Log"]["logdir"], epoch_uuid=epoch_uuid) as run:
+        run.log_test_results(epoch, test_results, epoch_uuid=epoch_uuid, test_uuid=test_uuid)
+
+
+def report_benchmark(
+    results: list[dict[str, Any]],
+    system_info: dict[str, Any],
+    *,
+    training_uuid: str | None,
+    epoch: int | None = None,
+    epoch_uuid: str | None = None,
+) -> None:
+    """Send benchmark measurements, linked to the run and checkpoint they measured."""
+    if not training_uuid:
+        print("Visin: the benchmark names no training run; not reporting it")
+        return
+    with visin.Run.attach(training_uuid, mark_status=False) as run:
+        run.log_benchmark(results, system_info, epoch=epoch, epoch_uuid=epoch_uuid)

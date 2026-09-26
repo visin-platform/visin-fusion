@@ -17,9 +17,10 @@ from core.data_loader import DataLoader as InferenceDataLoader
 from core.visualizer import Visualizer
 from utils.helpers import get_model_path, get_annotation_path
 from integrations.visualization_uploader import (
-    upload_all_visualizations_for_image,
+    queue_visualizations,
     get_epoch_uuid_from_model_path
 )
+from integrations.vision_service import attach_to_training, parse_checkpoint_name
 
 
 def calculate_num_classes(config):
@@ -64,6 +65,8 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
 
     uploaded_count = 0
     failed_count = 0
+    run = attach_to_training(config['Log']['logdir'], epoch_uuid=epoch_uuid) if upload and epoch_uuid else None
+    epoch_num = parse_checkpoint_name(config['General'].get('model_path') or '')[0] or 0
 
     for idx, path in enumerate(image_paths, 1):
         # Construct full paths
@@ -124,17 +127,9 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
             if upload and epoch_uuid:
                 try:
                     image_filename = os.path.basename(cam_path)
-                    results = upload_all_visualizations_for_image(
-                        epoch_uuid=epoch_uuid,
-                        output_base=visualizer.output_base,
-                        image_name=image_filename
-                    )
-
-                    # Count successes
-                    success_count = sum(1 for r in results.values() if r is not None)
-                    if success_count > 0:
+                    # Queued: sent in the background while the next image renders
+                    if queue_visualizations(run, epoch_num, epoch_uuid, visualizer.output_base, image_filename):
                         uploaded_count += 1
-                        print(f'Successfully uploaded {success_count}/{len(results)} visualization types')
                     else:
                         failed_count += 1
                 except Exception as e:
@@ -147,8 +142,11 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
 
     print(f"\nProcessing complete!")
     print(f"Successfully processed: {len(image_paths) - failed_count}/{len(image_paths)}")
+    if run is not None:
+        # Waits for the queued uploads; visin logs anything that failed
+        run.finish()
     if upload:
-        print(f"Successfully uploaded: {uploaded_count}/{len(image_paths)}")
+        print(f"Queued for upload: {uploaded_count}/{len(image_paths)}")
 
 
 def main():
