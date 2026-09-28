@@ -73,7 +73,7 @@ def visin(tmp_path, monkeypatch):
 
 def test_a_config_can_name_a_visin_dataset(visin):
     state, _, data = visin
-    config = prepare_config({'extends': 'swin', 'Dataset': {'dataset_root': 'visin:zod'}})
+    config = prepare_config({'extends': 'clftv2', 'Dataset': {'dataset_root': 'visin:zod'}})
     root = Path(config['Dataset']['dataset_root'])
     assert root.is_relative_to(data) and (root / 'dataset.json').exists()
     assert config['Dataset']['name'] == 'zod'  # from the downloaded dataset's manifest

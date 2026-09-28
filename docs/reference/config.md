@@ -1,13 +1,14 @@
 # Config reference
 
-Generated from `utils/config_schema.py` by `tools/make_config_reference.py`; do not edit.
+Generated from `visin_fusion/config/config_schema.py` by `tools/make_config_reference.py`; do not edit.
+Schema version: `2.0`. Export JSON Schema with `visin-fusion schema`.
 
-Unknown keys in these sections are errors. Model sections (`CLFT`, `SwinFusion`, `MaskFormer`, `Mask2Former`, `DeepLabV3Plus`) take the settings of their model; start from its preset in `configs/presets/`.
+Unknown keys in these sections are errors. Model sections (`CLFT`, `CLFTv2`, `MaskFormer`, `Mask2Former`, `DeepLabV3Plus`) take the settings of their model; start from its preset in `configs/presets/`.
 
 | `CLI.backbone` | Model section | Modes |
 | --- | --- | --- |
 | `clft` | `CLFT` | `rgb`, `lidar`, `cross_fusion` |
-| `swin_fusion` | `SwinFusion` | `rgb`, `lidar`, `cross_fusion` |
+| `clftv2` | `CLFTv2` | `rgb`, `lidar`, `cross_fusion` |
 | `maskformer` | `MaskFormer` | `rgb`, `lidar`, `cross_fusion` |
 | `mask2former` | `Mask2Former` | `rgb`, `lidar`, `cross_fusion` |
 | `deeplabv3plus` | `DeepLabV3Plus` | `rgb`, `lidar`, `fusion` |
@@ -26,7 +27,7 @@ The sections of a config and its name.
 | `Log` | section | **required** |  |
 | `Dataset` | section | **required** |  |
 | `CLFT` | dict (optional) |  |  |
-| `SwinFusion` | dict (optional) |  |  |
+| `CLFTv2` | dict (optional) |  |  |
 | `MaskFormer` | dict (optional) |  |  |
 | `Mask2Former` | dict (optional) |  |  |
 | `DeepLabV3Plus` | dict (optional) |  |  |
@@ -37,7 +38,7 @@ The model and its inputs.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `backbone` | `clft`, `swin_fusion`, `maskformer`, `mask2former`, `deeplabv3plus` | **required** | The model |
+| `backbone` | `clft`, `clftv2`, `maskformer`, `mask2former`, `deeplabv3plus` | **required** | The model |
 | `mode` | `rgb`, `lidar`, `fusion`, `cross_fusion` | **required** | Inputs: camera (rgb), LiDAR (lidar) or both (fusion; cross_fusion is the same) |
 
 ## General

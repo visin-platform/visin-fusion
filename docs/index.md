@@ -1,25 +1,21 @@
 # Visin Fusion
 
-Train and evaluate semantic segmentation models that combine a camera image with a LiDAR projection,
-for autonomous driving. Five models share one pipeline:
+A Python library for comparing camera and projected LiDAR semantic segmentation models. Import a model into your own code, or use the optional pipeline to train, evaluate, visualize and benchmark it from a config.
 
-| Model | Preset |
-| --- | --- |
-| CLFT (ViT) | `clft` |
-| SwinFusion / CLFTv2 (Swin) | `swin` |
-| MaskFormer (Swin backbone) | `maskformer` |
-| Mask2Former (Swin backbone) | `mask2former` |
-| DeepLabV3+ (ResNet-101) | `deeplabv3plus` |
+```python
+from visin_fusion.models import CLFTv2
 
-Each takes the camera image (`rgb`), the LiDAR projection (`lidar`) or both (`fusion`).
-
-A run is described by one config. It trains a model, tests it on each test set of the dataset,
-renders visualizations and benchmarks speed and memory, and can report all of it to
-[Visin](https://app.visin.eu).
-
-```bash
-python run.py -c configs/quickstart.json
+model = CLFTv2(num_classes=4, mode="cross_fusion")
+logits = model(rgb, lidar)  # [batch, classes, height, width]
 ```
 
-Start with [Getting started](getting-started.md), then [Configs](configs.md) and
-[Datasets](datasets.md) to train on your own data.
+Five research model families share this calling convention. Their fusion points and prediction heads differ:
+
+![Diagram: comparison of CLFT, CLFTv2, MaskFormer, Mask2Former and DeepLabV3+ by encoder, fusion point and prediction head.](assets/models/comparison.svg){ .model-diagram }
+
+- [Use as a library](library.md): installation, model API, inference, training and checkpoints.
+- [Compare models](models.md): diagrams, implementation differences and paper references.
+- [Getting started](getting-started.md): a quick library example and the sample pipeline.
+- [Configs](configs.md) and [Datasets](datasets.md): run the pipeline on your own data.
+
+The `train` extra enables the full pipeline. Visin reporting and `visin:` datasets use the separate `visin` extra. Neither is needed to import a model.

@@ -15,7 +15,7 @@ from utils.config_schema import BACKBONES
 from utils.helpers import calculate_num_classes
 
 SAMPLE = Path(__file__).resolve().parents[1] / 'data' / 'zod_sample'
-CASES = [(preset, mode) for preset in ('clft', 'swin', 'maskformer', 'mask2former', 'deeplabv3plus')
+CASES = [(preset, mode) for preset in ('clft', 'clftv2', 'maskformer', 'mask2former', 'deeplabv3plus')
          for mode in ('rgb', 'lidar', 'fusion')]
 
 
@@ -47,12 +47,12 @@ def test_forward_pass(preset, mode):
 
 def test_checkpoint_missing_layers_does_not_load(tmp_path):
     # With strict=False (as before) the missing layer would stay randomly initialised, unnoticed
-    config = config_for('swin', 'fusion')
+    config = config_for('clftv2', 'fusion')
     state = build(config).state_dict()
     del state[next(iter(state))]
-    torch.save({'model_state_dict': state, 'epoch': 0}, tmp_path / 'swin.pth')
+    torch.save({'model_state_dict': state, 'epoch': 0}, tmp_path / 'clftv2.pth')
     with pytest.raises(RuntimeError, match='Missing key'):
-        AdvancedModelBuilder(config, 'cpu').load_checkpoint(build(config), tmp_path / 'swin.pth')
+        AdvancedModelBuilder(config, 'cpu').load_checkpoint(build(config), tmp_path / 'clftv2.pth')
 
 
 def test_segmenter_gives_one_calling_convention():

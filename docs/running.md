@@ -3,10 +3,10 @@
 ## The whole pipeline
 
 ```bash
-python run.py -c <config.json>                          # train, test, visualize, benchmark
-python run.py -c <config.json> --stages test,visualize  # some stages, in order
-python run.py -c <config.json> --upload                 # also upload visualizations to Visin
-python run.py -c <config.json> --benchmark-device cpu   # benchmark on one device only
+visin-fusion run -c <config.json>                          # train, test, visualize, benchmark
+visin-fusion run -c <config.json> --stages test,visualize  # some stages, in order
+visin-fusion run -c <config.json> --upload                 # also upload visualizations to Visin
+visin-fusion run -c <config.json> --benchmark-device cpu   # benchmark on one device only
 ```
 
 `run.py` checks the config first, then runs each stage as its own process and stops at the first that
@@ -18,22 +18,22 @@ Each stage is a module, the same for every model (the config's `CLI.backbone` pi
 them from the repository root:
 
 ```bash
-python -m stages.train.common -c <config.json> [--seed N]
-python -m stages.test.common -c <config.json> [--checkpoint <file.pth>]
-python -m stages.visualize.common -c <config.json> [-p <frames.txt>] [--upload]
-python -m stages.benchmark.common -c <config.json> [<config.json> ...]
+python -m visin_fusion.engine.stages.train.common -c <config.json> [--seed N]
+python -m visin_fusion.engine.stages.test.common -c <config.json> [--checkpoint <file.pth>]
+python -m visin_fusion.engine.stages.visualize.common -c <config.json> [-p <frames.txt>] [--upload]
+python -m visin_fusion.engine.stages.benchmark.common -c <config.json> [<config.json> ...]
 ```
 
 
 ### Benchmarking
 
-Every model shares one benchmark, `python -m stages.benchmark.common` (the per-model benchmark modules
+Every model shares one benchmark, `python -m visin_fusion.engine.stages.benchmark.common` (the per-model benchmark modules
 call it). It builds each config's model with random weights (speed does not depend on them, and
 nothing is downloaded) and records parameters, FLOPs, inference time and memory:
 
 ```bash
-python -m stages.benchmark.common -c <config.json> [<config.json> ...]   # CPU and GPU
-python -m stages.benchmark.common -c configs/ --single --device cuda       # every config in a folder
+python -m visin_fusion.engine.stages.benchmark.common -c <config.json> [<config.json> ...]   # CPU and GPU
+python -m visin_fusion.engine.stages.benchmark.common -c configs/ --single --device cuda       # every config in a folder
 ```
 
 It times 100 forward passes after 10 warm-up passes (`--num-runs`, `--warmup-runs`). GPU memory is
@@ -73,6 +73,9 @@ The image holds the code and its dependencies; data, outputs and downloaded weig
 docker compose run --rm fusion -c configs/quickstart.json                                # GPU
 docker compose run --rm fusion-cpu -c configs/quickstart.json --benchmark-device cpu     # CPU
 ```
+
+Visin credentials come from `.env` beside the Compose file or an external path set with
+`VISIN_ENV_FILE=/path/to/visin.env`; the file is never copied into the image.
 
 A config's relative `Log.logdir` is placed under `/outputs`. The GPU service needs the NVIDIA container
 toolkit on the host. Images are published by `.github/workflows/image.yml` to

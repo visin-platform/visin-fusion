@@ -1,61 +1,24 @@
-# DeepLabV3+ Implementation
+# DeepLabV3+
 
-This document sketches the high‑level architectures of the **DeepLabV3+** and **DeepLabV3+ Late Fusion** models used in the repository. The diagrams are detailed enough for inclusion in a methods section of a paper.
+**Convolutional encoder–decoder with late sensor fusion.** The RGB and projected LiDAR branches each run a ResNet-101 encoder, atrous spatial pyramid pooling (ASPP), and a decoder. In fusion mode, their decoded features are averaged before one shared classifier predicts semantic logits.
 
-```mermaid
-flowchart TB
-    %% Input
-    Input["Input Image<br/>(3×H×W)"]
+![Diagram: DeepLabV3+ late fusion processes RGB and projected LiDAR in separate ResNet-101, ASPP and decoder branches, then merges features before classification.](../assets/models/deeplabv3plus.svg){ .model-diagram }
 
-    %% Encoder backbone
-    subgraph Encoder[ResNet-101 backbone]
-        Conv1["conv1 7×7, /2"]
-        BN1["bn1"]
-        ReLU1["relu"]
-        MaxPool["maxpool /2"]
-        Layer1["layer1 (1/4, 256ch)"]
-        Layer2["layer2 (1/8, 512ch)"]
-        Layer3["layer3 (1/16, 1024ch)"]
-        Layer4["layer4 atrous (1/16, 2048ch)"]
-    end
+*The highlighted card marks late fusion. RGB-only and LiDAR-only modes use one DeepLabV3+ branch.*
 
-    Input --> Conv1 --> BN1 --> ReLU1 --> MaxPool
-    MaxPool --> Layer1 --> Layer2 --> Layer3 --> Layer4
+## Why choose it
 
-    %% ASPP
-    Layer4 --> ASPP["ASPP (out 256ch)"]
+DeepLabV3+ provides a convolutional comparison to the transformer families. ASPP captures context at multiple dilation rates while the decoder adds lower-level spatial detail. **Late camera–LiDAR fusion is this repository's extension** of the original image segmentation architecture.
 
-    %% Low-level connection
-    Layer1 --> LowLevel["low-level feat (256ch)"]
+```python
+from visin_fusion.models import DeepLabV3Plus
 
-    %% Decoder
-    ASPP --> Decoder["Decoder"]
-    LowLevel --> Decoder
-    Decoder --> Head["classifier → logits (C)\n↑bilinear→H×W"]
-
-    %% Late fusion variant
-    subgraph LateFusion[DeepLabV3+ Late Fusion]
-        RGBInput["RGB Input"]
-        LIDARInput["LiDAR Input"]
-        RGBBranch["DeepLabV3+\n(backbone→ASPP→decoder w/o final cls)"]
-        LIDARBranch["DeepLabV3+\n(same structure) "]
-        Fusion["Fusion (residual_avg)\n+ prev?"]
-        SharedHead["shared classifier → C"]
-        Upsample["↑bilinear→H×W"]
-
-        RGBInput --> RGBBranch
-        LIDARInput --> LIDARBranch
-        RGBBranch --> Fusion
-        LIDARBranch --> Fusion
-        Fusion --> SharedHead --> Upsample
-    end
+model = DeepLabV3Plus(num_classes=4, mode="fusion", fusion_strategy="residual_average")
+logits = model(rgb, lidar)
 ```
 
-### Component details
+This class uses `mode="fusion"` for both streams; its single-stream modes are `"rgb"` and `"lidar"`. See the [library API](../library.md) for the shared output contract.
 
-- **Encoder:** Standard ResNet‑101 layers; `layer4` uses atrous convolutions (dilation=2) to maintain resolution. Spatial strides are \( /2, /4, /8, /16 \) respectively.
-- **ASPP:** Atrous Spatial Pyramid Pooling with rates {1,6,12,18} plus global pooling; outputs 256‑channel feature map.
-- **Decoder:** Projects low‑level `layer1` features to 48 channels, upsamples ASPP output to match, concatenates, runs two 3×3 convs with batch norm/RELU/dropout, then final classifier and bilinear upsampling to input size.
-- **Late fusion:** Two parallel DeepLabV3+ pipelines (RGB and LiDAR). Final classifiers removed, features fused via simple average (plus optional previous-stage addition), then a shared 1×1 conv classifier produces segmentation logits. Individual branch predictions are also computed for diagnostics.
+## Research references
 
-> This figure abstracts away weight initialisation, batch‑norm details, and training hyperparameters. It is intended to communicate structural design to readers and collaborators.
+- Chen, Zhu, Papandreou, Schroff & Adam, [*Encoder-Decoder with Atrous Separable Convolution for Semantic Image Segmentation*](https://arxiv.org/abs/1802.02611), 2018. Introduces DeepLabV3+; the two-stream late-fusion path here is a library adaptation.

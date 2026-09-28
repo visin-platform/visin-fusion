@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="550" viewBox="0 0 1280 550" role="img">
+<title>Five ways to combine two views architecture overview</title>
+<desc>Same inputs and task; different feature extraction, fusion point and prediction head.</desc>
+<defs><filter id="shadow" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#010711" flood-opacity=".3"/></filter></defs>
+<rect width="1280" height="550" rx="26" fill="#0e1b2e"/>
+<rect x="52" y="45" width="118" height="30" rx="15" fill="#88bfff" fill-opacity=".14"/>
+<text x="70" y="66" font-size="14" font-weight="700" fill="#88bfff" letter-spacing="1.2">MODEL COMPARISON</text>
+<text x="52" y="118" font-size="36" font-weight="750" fill="#f5f9ff" >Five ways to combine two views</text>
+<text x="52" y="150" font-size="18" font-weight="500" fill="#afc2d9" >Same inputs and task; different feature extraction, fusion point and prediction head.</text>
+<text x="64" y="196" font-size="13" font-weight="700" fill="#8da9c7" letter-spacing="1.1">MODEL</text>
+<text x="323" y="196" font-size="13" font-weight="700" fill="#8da9c7" letter-spacing="1.1">ENCODER</text>
+<text x="620" y="196" font-size="13" font-weight="700" fill="#8da9c7" letter-spacing="1.1">WHERE STREAMS MEET</text>
+<text x="1000" y="196" font-size="13" font-weight="700" fill="#8da9c7" letter-spacing="1.1">PREDICTION</text>
+<rect x="52" y="211" width="1176" height="51" rx="12" fill="#182a42"/>
+<rect x="52" y="211" width="5" height="51" rx="2" fill="#66d9e8"/>
+<text x="65" y="244" font-size="18" font-weight="700" fill="#66d9e8" >CLFT</text>
+<text x="323" y="244" font-size="16" font-weight="500" fill="#dce7f5" >Global ViT</text>
+<text x="620" y="244" font-size="16" font-weight="500" fill="#dce7f5" >Fusion while decoding</text>
+<text x="1000" y="244" font-size="16" font-weight="500" fill="#dce7f5" >Dense logits</text>
+<rect x="52" y="271" width="1176" height="51" rx="12" fill="#182a42"/>
+<rect x="52" y="271" width="5" height="51" rx="2" fill="#a2e073"/>
+<text x="65" y="304" font-size="18" font-weight="700" fill="#a2e073" >CLFTv2</text>
+<text x="323" y="304" font-size="16" font-weight="500" fill="#dce7f5" >Hierarchical Swin</text>
+<text x="620" y="304" font-size="16" font-weight="500" fill="#dce7f5" >Fusion at each pyramid scale</text>
+<text x="1000" y="304" font-size="16" font-weight="500" fill="#dce7f5" >Dense logits</text>
+<rect x="52" y="331" width="1176" height="51" rx="12" fill="#182a42"/>
+<rect x="52" y="331" width="5" height="51" rx="2" fill="#b99aff"/>
+<text x="65" y="364" font-size="18" font-weight="700" fill="#b99aff" >MaskFormer</text>
+<text x="323" y="364" font-size="16" font-weight="500" fill="#dce7f5" >Hierarchical Swin</text>
+<text x="620" y="364" font-size="16" font-weight="500" fill="#dce7f5" >Fusion before FPN</text>
+<text x="1000" y="364" font-size="16" font-weight="500" fill="#dce7f5" >Queries → masks</text>
+<rect x="52" y="391" width="1176" height="51" rx="12" fill="#182a42"/>
+<rect x="52" y="391" width="5" height="51" rx="2" fill="#f7ba72"/>
+<text x="65" y="424" font-size="18" font-weight="700" fill="#f7ba72" >Mask2Former</text>
+<text x="323" y="424" font-size="16" font-weight="500" fill="#dce7f5" >Hierarchical Swin</text>
+<text x="620" y="424" font-size="16" font-weight="500" fill="#dce7f5" >Fusion before pixel decoder</text>
+<text x="1000" y="424" font-size="16" font-weight="500" fill="#dce7f5" >Masked queries</text>
+<rect x="52" y="451" width="1176" height="51" rx="12" fill="#182a42"/>
+<rect x="52" y="451" width="5" height="51" rx="2" fill="#ff8ea5"/>
+<text x="65" y="484" font-size="18" font-weight="700" fill="#ff8ea5" >DeepLabV3+</text>
+<text x="323" y="484" font-size="16" font-weight="500" fill="#dce7f5" >Two ResNet-101s</text>
+<text x="620" y="484" font-size="16" font-weight="500" fill="#dce7f5" >Fusion after both decoders</text>
+<text x="1000" y="484" font-size="16" font-weight="500" fill="#dce7f5" >Dense logits</text>
+</svg>

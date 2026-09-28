@@ -32,8 +32,8 @@ if [[ -n "${IMAGE:-}" ]]; then
     apptainer exec --nv \
         --bind "${DATA_DIR:-$PWD/data}:/data" --bind "${OUTPUT_DIR:-$PWD/outputs}:/outputs" \
         --bind "${CACHE_DIR:-$PWD/.cache}:/cache" \
-        "$IMAGE" python /app/run.py -c "$config" --upload "$@"  # the submit directory is bound, so relative config paths work
+        "$IMAGE" visin-fusion run -c "$config" --upload "$@"  # the submit directory is bound, so relative config paths work
 else
     source venv/bin/activate
-    python run.py -c "$config" --upload "$@"
+    visin-fusion run -c "$config" --upload "$@"
 fi

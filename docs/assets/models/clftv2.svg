@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="550" viewBox="0 0 1280 550" role="img">
+<title>CLFTv2 architecture overview</title>
+<desc>Hierarchical features and a top-down fusion pyramid</desc>
+<defs><filter id="shadow" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#010711" flood-opacity=".3"/></filter></defs>
+<rect width="1280" height="550" rx="26" fill="#0e1b2e"/>
+<rect x="52" y="45" width="118" height="30" rx="15" fill="#a2e073" fill-opacity=".14"/>
+<text x="70" y="66" font-size="14" font-weight="700" fill="#a2e073" letter-spacing="1.2">MODEL FLOW</text>
+<text x="52" y="118" font-size="36" font-weight="750" fill="#f5f9ff" >CLFTv2</text>
+<text x="52" y="150" font-size="18" font-weight="500" fill="#afc2d9" >Hierarchical features and a top-down fusion pyramid</text>
+<rect x="52" y="198" width="216" height="210" rx="20" fill="#15253b" stroke="#38506e" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="86" cy="234" r="15" fill="#a2e073" fill-opacity=".16"/>
+<text x="80" y="240" font-size="17" font-weight="700" fill="#a2e073" >1</text>
+<text x="72" y="284" font-size="21" font-weight="700" fill="#f4f8ff" >Inputs</text>
+<rect x="72" y="305" width="176" height="33" rx="9" fill="#263f59"/>
+<circle cx="87" cy="321" r="5" fill="#75cfff"/>
+<text x="100" y="327" font-size="16" font-weight="500" fill="#dce7f5" >RGB image</text>
+<rect x="72" y="345" width="176" height="33" rx="9" fill="#263f59"/>
+<circle cx="87" cy="361" r="5" fill="#f8bc76"/>
+<text x="100" y="367" font-size="16" font-weight="500" fill="#dce7f5" >LiDAR projection</text>
+<text x="72" y="390" font-size="12" font-weight="700" fill="#a2e073" letter-spacing="1.2">TWO STREAMS</text>
+<rect x="292" y="198" width="216" height="210" rx="20" fill="#15253b" stroke="#38506e" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="326" cy="234" r="15" fill="#a2e073" fill-opacity=".16"/>
+<text x="320" y="240" font-size="17" font-weight="700" fill="#a2e073" >2</text>
+<text x="312" y="284" font-size="21" font-weight="700" fill="#f4f8ff" >Swin V2</text>
+<text x="312" y="325" font-size="17" font-weight="500" fill="#dce7f5" >Shifted-window</text>
+<text x="312" y="351" font-size="17" font-weight="500" fill="#dce7f5" >feature hierarchy</text>
+<text x="312" y="390" font-size="12" font-weight="700" fill="#a2e073" letter-spacing="1.2">ENCODER</text>
+<rect x="532" y="198" width="216" height="210" rx="20" fill="#15253b" stroke="#38506e" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="566" cy="234" r="15" fill="#a2e073" fill-opacity=".16"/>
+<text x="560" y="240" font-size="17" font-weight="700" fill="#a2e073" >3</text>
+<text x="552" y="284" font-size="21" font-weight="700" fill="#f4f8ff" >Per-scale maps</text>
+<text x="552" y="325" font-size="17" font-weight="500" fill="#dce7f5" >Project both</text>
+<text x="552" y="351" font-size="17" font-weight="500" fill="#dce7f5" >modality features</text>
+<text x="552" y="390" font-size="12" font-weight="700" fill="#a2e073" letter-spacing="1.2">MULTI-SCALE</text>
+<rect x="772" y="198" width="216" height="210" rx="20" fill="#1a3048" stroke="#a2e073" stroke-width="2" filter="url(#shadow)"/>
+<circle cx="806" cy="234" r="15" fill="#a2e073" fill-opacity=".16"/>
+<text x="800" y="240" font-size="17" font-weight="700" fill="#a2e073" >4</text>
+<text x="792" y="284" font-size="21" font-weight="700" fill="#f4f8ff" >Residual fusion</text>
+<text x="792" y="325" font-size="17" font-weight="500" fill="#dce7f5" >Merge streams +</text>
+<text x="792" y="351" font-size="17" font-weight="500" fill="#dce7f5" >coarser stage</text>
+<text x="792" y="390" font-size="12" font-weight="700" fill="#a2e073" letter-spacing="1.2">FUSION POINT</text>
+<rect x="1012" y="198" width="216" height="210" rx="20" fill="#15253b" stroke="#38506e" stroke-width="1" filter="url(#shadow)"/>
+<circle cx="1046" cy="234" r="15" fill="#a2e073" fill-opacity=".16"/>
+<text x="1040" y="240" font-size="17" font-weight="700" fill="#a2e073" >5</text>
+<text x="1032" y="284" font-size="21" font-weight="700" fill="#f4f8ff" >Segmentation</text>
+<text x="1032" y="325" font-size="17" font-weight="500" fill="#dce7f5" >Upsampled</text>
+<text x="1032" y="351" font-size="17" font-weight="500" fill="#dce7f5" >class logits</text>
+<text x="1032" y="390" font-size="12" font-weight="700" fill="#a2e073" letter-spacing="1.2">OUTPUT</text>
+<line x1="269" y1="304" x2="289" y2="304" stroke="#a2e073" stroke-width="3"/>
+<polygon points="283,298 292,304 283,310" fill="#a2e073"/>
+<line x1="509" y1="304" x2="529" y2="304" stroke="#a2e073" stroke-width="3"/>
+<polygon points="523,298 532,304 523,310" fill="#a2e073"/>
+<line x1="749" y1="304" x2="769" y2="304" stroke="#a2e073" stroke-width="3"/>
+<polygon points="763,298 772,304 763,310" fill="#a2e073"/>
+<line x1="989" y1="304" x2="1009" y2="304" stroke="#a2e073" stroke-width="3"/>
+<polygon points="1003,298 1012,304 1003,310" fill="#a2e073"/>
+<rect x="52" y="445" width="1176" height="60" rx="14" fill="#a2e073" fill-opacity=".09"/>
+<text x="74" y="481" font-size="13" font-weight="700" fill="#a2e073" letter-spacing="1.3">CORE IDEA</text>
+<text x="220" y="482" font-size="18" font-weight="500" fill="#e4edf8" >Native Swin feature maps replace CLFT’s ViT token reassembly.</text>
+</svg>

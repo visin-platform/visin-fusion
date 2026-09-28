@@ -1,68 +1,26 @@
-# System Architecture Overview
+# CLFT
 
-This document sketches the high‑level architecture of the **CLFT** model used in the repository. The diagram provides a mid‑level view that is suitable for both internal documentation and academic publications.
+**Global ViT features, fused while decoding.** CLFT runs the camera image and a projected LiDAR image through the same vision transformer. Features captured from several transformer blocks become spatial maps; residual fusion combines the two modalities from coarse to fine.
 
-```mermaid
-flowchart TB
-    %% Inputs
-    subgraph Inputs
-        RGB["RGB Image<br/>(3×H×W)"]
-        LIDAR["LiDAR Point Cloud<br/>(X×H×W)"]
-    end
+![Diagram: CLFT takes RGB and projected LiDAR through a shared ViT, token reassembly, residual fusion, and dense segmentation.](../assets/models/clft.svg){ .model-diagram }
 
-    %% Backbone & hooks
-    subgraph Backbone
-        Transformer[timm Transformer<br/>encoder]
-        Transformer -->|blocks 0..N| Hooks[registered hooks]
-    end
-    RGB -->|`modal='rgb'` or part of cross‑fusion| Transformer
-    LIDAR -->|`modal='lidar'` or cross‑fusion| Transformer
+*The highlighted card marks where the two streams meet. The diagram describes fusion mode; RGB-only and LiDAR-only modes use one stream.*
 
-    %% Stage loop (reverse order)
-    subgraph Stage[i = last..0]
-        direction TB
-        Hooks --> Act["Tokens<br/>(B, L, D)"]
-        
-        subgraph ReRGB["Reassemble RGB"]
-            Act --> ReadRGB["Read CLS token<br/>(ignore/add/proj)"]
-            ReadRGB --> ConcatRGB["Rearrange → map<br/>(B,D,H/p,W/p)"]
-            ConcatRGB --> ResampleRGB["Conv1×1 → ^D<br/>+ up/down sample"]
-        end
-        
-        subgraph ReXYZ["Reassemble XYZ"]
-            Act --> ReadXYZ["Read CLS token<br/>(…)" ]
-            ReadXYZ --> ConcatXYZ["Map reshape<br/>(same)" ]
-            ConcatXYZ --> ResampleXYZ["Resample to ^D"]
-        end
+## Why choose it
 
-        ReRGB & ReXYZ --> FuseNode["Fusion stage"]
-        subgraph FuseBlock
-            FuseNode --> ResConvRGB["resConv RGB"]
-            FuseNode --> ResConvXYZ["resConv XYZ"]
-            ResConvRGB & ResConvXYZ & Prev --> Sum["add + prev"]
-            Sum --> ResConv2["resConv2 → interpolate×2"]
-        end
-        FuseNode --> Prev["upsampled^{2} features"]
-        Prev -->|next stage| Hooks
-    end
+CLFT uses global ViT attention and reassembles token features at several resolutions. It is the reference for comparing the hierarchical Swin design in [CLFTv2](CLFTv2.md). The library returns dense class logits; the underlying implementation can also produce a depth head, but the public `CLFT` wrapper exposes segmentation.
 
-    %% Heads
-    Prev --> HeadsNode["Prediction Heads"]
-    subgraph HeadsBlock
-        HeadsNode --> Depth["HeadDepth: conv→relu→conv→sigmoid →1"]
-        HeadsNode --> Seg["HeadSeg: conv→relu→conv →C"]
-    end
+```python
+from visin_fusion.models import CLFT
+
+model = CLFT(num_classes=4, image_size=384, mode="cross_fusion")
+logits = model(rgb, lidar)  # [batch, 4, height, width]
 ```
 
-### Component details
+`rgb` and `lidar` are image tensors; `lidar` is a **projected image**, not a raw point cloud. Set `mode="rgb"` or `mode="lidar"` for a single stream. See the [library API](../library.md) for the common input and checkpoint contract.
 
-- **Inputs:** RGB images (`3×H×W`) and LiDAR projections (`X×H×W`) enter the same transformer backbone. The `modal` argument selects which stream(s) to feed; cross‑fusion runs both and merges their activations later.
-- **Transformer backbone:** A timm‑provided ViT/ResNet encoder produces a sequence of token vectors `(B, L, D)` per stream. Forward hooks are registered on specified transformer blocks (`hooks` list) to snapshot these activations.
-- **Stage loop:** Hooks are processed from deepest to shallowest. Each activation tensor branches into two **Reassemble** paths:
-  * **Read**: optionally incorporate the CLS token (ignored, averaged, or projected).
-  * **Concat**: reshape token sequence to a spatial feature map of size `(B, D, H/p, W/p)` where `p` is the patch size.
-  * **Resample**: a 1×1 conv followed by up‑ or down‑sampling (∆∈{½,1,2,4}) produces a map of dimension `^D`.
-- **Fusion modules:** Corresponding RGB and XYZ maps are each processed by a ResidualConvUnit (two 3×3 convs with skip). Their outputs are summed with the previous-stage feature map, run through a third residual conv, and bilinearly interpolated by 2× to serve as input for the next (shallower) stage.
-- **Heads:** After the last fusion, `HeadDepth` applies conv → interpolate → conv → ReLU → conv → sigmoid to reduce features to a single-channel depth map. `HeadSeg` uses a similar stack ending in `C` channels for class logits. Execution depends on the `type` argument (`full`, `depth`, `segmentation`).
+## Research references
 
-> ✨ This sketch omits low‑level details (e.g. `Resample` internals) to remain human‑readable and focuses on the flow of data through the major blocks.
+- Gu, Bellone, Pivoňka & Sell, [*CLFT: Camera-LiDAR Fusion Transformer for Semantic Segmentation in Autonomous Driving*](https://arxiv.org/abs/2404.17793), 2024. The camera–LiDAR fusion model behind this implementation.
+- Tahves, Gu, Bellone & Sell, [*A Novel Vision Transformer for Camera-LiDAR Fusion based Traffic Object Segmentation*](https://arxiv.org/abs/2501.02858), 2025. Extends CLFT traffic-object segmentation to more classes and evaluates it across varied weather conditions.
+- Ranftl, Bochkovskiy & Koltun, [*Vision Transformers for Dense Prediction*](https://arxiv.org/abs/2103.13413), 2021. Background for reassembling ViT tokens into multi-scale dense features.

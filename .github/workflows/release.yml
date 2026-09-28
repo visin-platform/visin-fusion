@@ -1,0 +1,134 @@
+name: Release
+
+# Publishes a version to PyPI and GitHub Releases when its tag is pushed:
+#
+#   git tag v1.2.3 && git push origin v1.2.3
+#
+# The version comes from the tag (setuptools-scm); nothing in the repository is edited. The release
+# notes are CHANGELOG.md's "## 1.2.3" section if there is one, else GitHub's notes generated from the
+# merged pull requests and commits since the previous tag. Pre-releases (v1.2.3rc1) go to PyPI and are
+# marked as such on GitHub. image.yml builds the Docker images for the same tag.
+#
+# One-time setup:
+#   - PyPI: add a trusted publisher for this repository (Publishing -> workflow `release.yml`,
+#     environment `pypi`); no API token is stored here.
+#   - GitHub: Settings -> Environments -> `pypi` (optionally with required reviewers).
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # setuptools-scm reads the version from the tag
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Tag is a version
+        run: |
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+)*((a|b|rc)[0-9]+)?(\.post[0-9]+)?(\.dev[0-9]+)?$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME is not a version like v1.2.3 or v1.2.3rc1"
+            exit 1
+          fi
+      - name: Build sdist and wheel
+        run: |
+          pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  test:
+    name: Test the built wheel
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Models only (core dependencies)
+        run: |
+          python -m venv /tmp/core
+          /tmp/core/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          /tmp/core/bin/pip install dist/*.whl
+          cd /tmp && /tmp/core/bin/python -c "
+          import torch, visin_fusion
+          from visin_fusion.models import CLFTv2
+          out = CLFTv2(num_classes=4).eval()(torch.randn(1, 3, 256, 256), torch.randn(1, 3, 256, 256))
+          assert out.shape == (1, 4, 256, 256), out.shape
+          assert visin_fusion.__version__ == '${GITHUB_REF_NAME#v}', visin_fusion.__version__
+          print('visin-fusion', visin_fusion.__version__, 'models OK')"
+      - name: Every extra installs, and the command line works from the wheel
+        run: |
+          python -m venv /tmp/full
+          /tmp/full/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          /tmp/full/bin/pip install "$(ls dist/*.whl)[train,visin]"
+          cd /tmp && /tmp/full/bin/visin-fusion schema > /dev/null
+          /tmp/full/bin/python -c "import visin_fusion.engine.stages.train.common, visin_fusion.integrations.visin"
+      - name: Unit tests
+        # From the checkout: the tests read its configs, tools and sample dataset
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[train,visin,dev]'
+          python -m pytest tests/unit -q
+
+  pypi:
+    name: Publish to PyPI
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/visin-fusion/${{ github.ref_name }}
+    permissions:
+      id-token: write  # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github:
+    name: GitHub release
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          # The lines under a "## <heading>" of CHANGELOG.md, up to the next "## " heading
+          section() { awk -v h="$1" '$0 ~ "^## " h "([^0-9.A-Za-z]|$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md; }
+          section "$version" > notes.md
+          if grep -q '[^[:space:]]' notes.md; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
+          prerelease=$([[ "$version" =~ (a|b|rc|dev)[0-9]*$ ]] && echo --prerelease || true)
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" "${notes[@]}" $prerelease

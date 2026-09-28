@@ -53,7 +53,7 @@ def test_unknown_section(config):
 
 def test_mode_the_backbone_does_not_have(config):
     config['CLI']['mode'] = 'fusion'  # validate_config alone does not translate; utils.config does
-    invalid(config, "mode 'fusion' is not one of swin_fusion's modes")
+    invalid(config, "mode 'fusion' is not one of clftv2's modes")
 
 
 def test_unknown_mode(config):
@@ -62,8 +62,8 @@ def test_unknown_mode(config):
 
 
 def test_missing_model_section(config):
-    del config['SwinFusion']
-    invalid(config, "needs a 'SwinFusion' section")
+    del config['CLFTv2']
+    invalid(config, "needs a 'CLFTv2' section")
 
 
 def test_train_class_gap(config):

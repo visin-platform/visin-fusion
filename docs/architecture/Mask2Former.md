@@ -1,47 +1,25 @@
-# Mask2FormerFusion Architecture
+# Mask2FormerFusion
 
-This document sketches the high‑level architecture of the **Mask2FormerFusion** model used in the repository. The figure highlights the deformable‑attention pixel decoder and multi‑scale masked‑attention transformer.
+**Multi-scale masked attention for each query.** Like MaskFormerFusion, this model fuses RGB and projected LiDAR features after a shared backbone. Its pixel decoder mixes information across scales with deformable attention; each query then attends primarily inside its predicted mask region.
 
-```mermaid
-flowchart TB
-    subgraph InputMF
-        RGB2["RGB Image"]
-        LIDAR2["LiDAR Image"]
-    end
+![Diagram: Mask2FormerFusion combines multi-scale camera and LiDAR features, deformable pixel decoding, masked-attention queries, and semantic prediction.](../assets/models/mask2former.svg){ .model-diagram }
 
-    RGB2 & LIDAR2 -->|fusion_res units per scale| Backbone2["Backbone (timm)\nfeatures_only=True"]
-    Backbone2 --> B1["C1,H1,W1"]
-    Backbone2 --> B2["C2,H2,W2"]
-    Backbone2 --> B3["C3,H3,W3"]
-    Backbone2 --> B4["C4,H4,W4"]
+*The highlighted masked-query stage is the main architectural change from MaskFormer. This library implements the decoder in PyTorch and returns semantic segmentation.*
 
-    %% MSDeformAttn pixel decoder
-    subgraph MSDec[MSDeformAttnPixelDecoder]
-        B1 --> P1["proj→256"]
-        B2 --> P2["proj→256"]
-        B3 --> P3["proj→256"]
-        B4 --> P4["proj→256"]
-        P4 --> U3["↑ + add P3"]
-        U3 --> U2["↑ + add P2"]
-        U2 --> U1["↑ + add P1"]
-        U1 --> PixelFeat["pixel_features 256@H1×W1"]
-        U1 --> MultiScale["multi-scale list"]
-    end
+## Why choose it
 
-    PixelFeat --> Proj["Conv1×1 → d_model"]
-    MultiScale --> ScaleProj["projections → d_model each"]
+Mask2Former extends mask classification with masked attention and multi-scale pixel features. Here, the camera–LiDAR two-stream feature fusion is a library adaptation; the original paper addresses image segmentation rather than this sensor pair. The public model returns dense semantic logits assembled from query class and mask predictions.
 
-    %% Mask2Former decoder
-    Proj & ScaleProj --> Mask2Dec["Mask2FormerDecoder\n(masked-attn over multi-scale)\noutputs class & mask per query"]
+```python
+from visin_fusion.models import Mask2FormerFusion
 
-    Mask2Dec --> Merge2["same merging formula → segmap"]
-    Merge2 --> Up2["↑bilinear to input size"]
+model = Mask2FormerFusion(num_classes=4, mode="cross_fusion", num_queries=100)
+logits = model(rgb, lidar)
 ```
 
-**Notes:**
-- Fusion_res units apply a residual conv to each backbone output before elementwise addition.
-- Pixel decoder is the deformable-attention variant from the official Mask2Former code; it produces both `pixel_features` and a multi-scale feature list used by the decoder.
-- A simple 1×1 projection aligns channels to the transformer embedding dimension `d_model`.
-- The Mask2Former decoder uses masked attention across scales and returns deep-supervision outputs.
+For a custom training loop, use the raw query outputs with `training_setup().loss`; see [Training from Python](../library.md#training-from-python).
 
-> This file stands alone for clarity when discussing the Mask2Former design; see `MaskFormer.md` for the original MaskFormer architecture.
+## Research references
+
+- Cheng et al., [*Masked-attention Mask Transformer for Universal Image Segmentation*](https://arxiv.org/abs/2112.01527), 2021. Introduces Mask2Former and masked-attention queries.
+- Liu et al., [*Swin Transformer V2: Scaling Up Capacity and Resolution*](https://arxiv.org/abs/2111.09883), 2021. The default backbone family in this library.

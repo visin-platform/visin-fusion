@@ -20,8 +20,8 @@ def test_merge_keeps_what_the_override_leaves_out():
 
 
 def test_extends_a_preset():
-    config = resolve_extends({'extends': 'swin', 'General': {'epochs': 3}})
-    assert config['CLI']['backbone'] == 'swin_fusion'
+    config = resolve_extends({'extends': 'clftv2', 'General': {'epochs': 3}})
+    assert config['CLI']['backbone'] == 'clftv2'
     assert config['General']['epochs'] == 3 and config['General']['batch_size'] == 8
     assert 'extends' not in config
 
@@ -55,7 +55,7 @@ def test_every_preset_runs_on_a_dataset_with_a_manifest(preset):
 
 
 def test_schema_defaults_fill_only_missing_keys():
-    config = prepare_config({'extends': 'swin', 'Dataset': {'dataset_root': str(SAMPLE)},
+    config = prepare_config({'extends': 'clftv2', 'Dataset': {'dataset_root': str(SAMPLE)},
                              'General': {'seed': 7}})
     assert config['General']['seed'] == 7
     assert config['General']['model_path'] == ''
@@ -64,8 +64,8 @@ def test_schema_defaults_fill_only_missing_keys():
 
 
 def test_default_logdir_names_dataset_and_model():
-    config = prepare_config({'extends': 'swin', 'CLI': {'mode': 'rgb'}, 'Dataset': {'dataset_root': str(SAMPLE)}})
-    assert config['Log']['logdir'] == 'logs/zod/swin_fusion-rgb'
+    config = prepare_config({'extends': 'clftv2', 'CLI': {'mode': 'rgb'}, 'Dataset': {'dataset_root': str(SAMPLE)}})
+    assert config['Log']['logdir'] == 'logs/zod/clftv2-rgb'
 
 
 def test_preparing_twice_changes_nothing():
@@ -75,10 +75,10 @@ def test_preparing_twice_changes_nothing():
 
 def test_mistake_in_a_user_config_is_reported():
     with pytest.raises(ConfigError, match='General.epcohs'):
-        prepare_config({'extends': 'swin', 'Dataset': {'dataset_root': str(SAMPLE)}, 'General': {'epcohs': 3}})
+        prepare_config({'extends': 'clftv2', 'Dataset': {'dataset_root': str(SAMPLE)}, 'General': {'epcohs': 3}})
 
 
-@pytest.mark.parametrize('preset, word', [('swin', 'cross_fusion'), ('deeplabv3plus', 'fusion')])
+@pytest.mark.parametrize('preset, word', [('clftv2', 'cross_fusion'), ('deeplabv3plus', 'fusion')])
 @pytest.mark.parametrize('mode', ['fusion', 'cross_fusion'])
 def test_either_fusion_word_works_for_every_model(preset, word, mode):
     config = prepare_config({'extends': preset, 'CLI': {'mode': mode}, 'Dataset': {'dataset_root': str(SAMPLE)}})
@@ -87,7 +87,7 @@ def test_either_fusion_word_works_for_every_model(preset, word, mode):
 
 def test_dataset_root_uses_environment_variables(monkeypatch):
     monkeypatch.setenv('DATA_ROOT', str(SAMPLE.parent))
-    config = prepare_config({'extends': 'swin', 'Dataset': {'dataset_root': '$DATA_ROOT/zod_sample'}})
+    config = prepare_config({'extends': 'clftv2', 'Dataset': {'dataset_root': '$DATA_ROOT/zod_sample'}})
     assert config['Dataset']['dataset_root'] == str(SAMPLE)
     assert config['Dataset']['name'] == 'zod'  # its manifest was found there
 
@@ -95,4 +95,4 @@ def test_dataset_root_uses_environment_variables(monkeypatch):
 def test_unset_environment_variable_is_named(monkeypatch):
     monkeypatch.delenv('NO_SUCH_ROOT', raising=False)
     with pytest.raises(ValueError, match='NO_SUCH_ROOT'):
-        prepare_config({'extends': 'swin', 'Dataset': {'dataset_root': '$NO_SUCH_ROOT/zod'}})
+        prepare_config({'extends': 'clftv2', 'Dataset': {'dataset_root': '$NO_SUCH_ROOT/zod'}})

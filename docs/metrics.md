@@ -124,6 +124,6 @@ Computed per class in `utils/metrics.py`, the same way for every model:
 - AP is the area under that precision–recall curve with precision made monotonically decreasing
   (the PASCAL VOC 2010 method). `mean_ap` averages it over the evaluated classes.
 
-Before September 2026 the SwinFusion, MaskFormer, Mask2Former and DeepLabV3+ test scripts ranked a
+Before September 2026 the CLFTv2, MaskFormer, Mask2Former and DeepLabV3+ test scripts ranked a
 random sample of 100,000 of the kept pixels instead, so their AP moved by up to about 0.02 between
 runs of the same checkpoint. CLFT always used every pixel.

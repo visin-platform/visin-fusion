@@ -1,42 +1,48 @@
 # Getting started
 
-## Install
+## Install from source
 
 ```bash
 git clone https://github.com/visin-platform/visin-fusion.git
 cd visin-fusion
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e .
 ```
 
-Or use the Docker image (see [Running](running.md#docker)).
+The base install provides the model classes. Add `[train]` for the runnable pipeline and `[visin]` for reporting; see [Use as a Python library](library.md#install).
 
-## Quick start
+## Call a model
 
-The repository includes a 28-frame sample of ZOD in `tests/data/zod_sample`. Train SwinFusion on it
-for two short epochs, then test, visualize and benchmark:
+```python
+import torch
+from visin_fusion.models import CLFTv2
+
+model = CLFTv2(num_classes=4, mode="cross_fusion", pretrained=False).eval()
+rgb = torch.randn(1, 3, 256, 256)
+lidar = torch.randn(1, 3, 256, 256)  # projected LiDAR image
+with torch.inference_mode():
+    logits = model(rgb, lidar)
+print(logits.shape)  # [1, 4, 256, 256]
+```
+
+The two inputs are image tensors. For a single stream, set `mode="rgb"` or `mode="lidar"`. See the [library API](library.md) for training and checkpoint examples, or [compare the five models](models.md) before choosing one.
+
+## Run the sample pipeline
+
+The repository includes a 28-frame ZOD sample in `tests/data/zod_sample`. Install the pipeline extra and run its short CLFTv2 example:
 
 ```bash
-python run.py -c configs/quickstart.json
+python -m pip install -e '.[train]'
+visin-fusion run -c configs/quickstart.json
 ```
 
-Everything the run writes goes to `logs/quickstart/`: epoch logs, checkpoints, test results,
-visualizations, benchmark results and TensorBoard logs.
+The pipeline trains, tests, visualizes and benchmarks. It writes epoch logs, checkpoints, test results, images and benchmark results under `logs/quickstart/`. [Running](running.md) documents stages, Docker and SLURM; [Configs](configs.md) and [Datasets](datasets.md) cover your own data.
 
-## Report to Visin
-
-With a Visin project token, every stage is reported to [Visin](https://app.visin.eu): the run and its
-config, each epoch, the test results, the visualizations and the benchmark.
+## Optional Visin reporting
 
 ```bash
-cp integrations/.env.example integrations/.env   # then set VISIN_TOKEN
+python -m pip install -e '.[train,visin]'
+cp .env.example .env  # then set VISIN_TOKEN; or export VISIN_ENV_FILE=/path/to/visin.env
 ```
 
-Without a token, everything runs and nothing is reported. See `integrations/README.md` for
-offline nodes (`VISIN_MODE=offline`, then `visin sync`).
-
-## Next
-
-- [Configs](configs.md): write a config for your own run
-- [Datasets](datasets.md): prepare your own data
-- [Running](running.md): stages, Docker, the cluster
+Without a pipeline key, the run remains local. See the [Visin integration guide](https://github.com/visin-platform/visin-fusion/blob/main/integrations/README.md) for offline nodes and report syncing.

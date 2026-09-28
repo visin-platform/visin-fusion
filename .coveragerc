@@ -1,9 +1,6 @@
 [run]
-source = utils, core, integrations, tools
-# The per-dataset pickle converters reproduce old encodings and are to be retired (TODO.md, section 1)
-omit =
-    tools/waymo_pickle_to_png.py
-    tools/xod_pickle_to_png.py
+source = visin_fusion
+parallel = true
 
 [report]
 show_missing = false

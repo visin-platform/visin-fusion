@@ -1,49 +1,25 @@
-# MaskFormerFusion Architecture
+# MaskFormerFusion
 
-This document sketches the high‑level architecture of the **MaskFormerFusion** model used in the repository. The diagram emphasises the multi‑scale backbone, pixel decoder, query‑based transformer, and early fusion strategy.
+**Fuse multi-scale features, then classify masks.** A shared backbone encodes RGB and projected LiDAR independently. Their corresponding feature maps are combined before a lightweight FPN pixel decoder. Learned queries predict a class and a mask; the query outputs are merged into semantic logits.
 
-## MaskFormerFusion
+![Diagram: MaskFormerFusion uses per-scale camera and LiDAR feature fusion, an FPN pixel decoder, learned queries, and semantic mask merging.](../assets/models/maskformer.svg){ .model-diagram }
 
-```mermaid
-flowchart TB
-    subgraph Input
-        RGB["RGB Image"]
-        LIDAR["LiDAR Image"]
-    end
+*Fusion is after feature extraction and before the pixel decoder. The query decoder is the main difference from CLFT and CLFTv2's direct dense heads.*
 
-    %% Early fusion
-    RGB & LIDAR -->|elementwise add| Backbone["Backbone (timm)\nfeatures_only=True"]
+## Why choose it
 
-    %% Backbone outputs
-    Backbone --> F1["scale1: C1, H1,W1"]
-    Backbone --> F2["scale2: C2, H2,W2"]
-    Backbone --> F3["scale3: C3, H3,W3"]
-    Backbone --> F4["scale4: C4, H4,W4"]
+MaskFormer frames segmentation as **mask classification** rather than direct per-pixel classification. This implementation adds camera–LiDAR feature fusion and uses a plain FPN pixel decoder in place of the transformer encoder used in some original MaskFormer configurations. It produces semantic segmentation only.
 
-    %% Pixel decoder (FPN-style)
-    subgraph PixelDecoder[PixelDecoder]
-        F1 --> Lat1["1x1 conv→256"]
-        F2 --> Lat2["1x1 conv→256"]
-        F3 --> Lat3["1x1 conv→256"]
-        F4 --> Lat4["1x1 conv→256"]
-        Lat4 --> Up3["↑bilinear + add Lat3"]
-        Up3 --> Up2["↑bilinear + add Lat2"]
-        Up2 --> Up1["↑bilinear + add Lat1"]
-        Up1 --> OutPD["output_conv → 256@H1×W1"]
-    end
+```python
+from visin_fusion.models import MaskFormerFusion
 
-    %% Transformer decoder with queries
-    OutPD --> TransformerDecoder["TransformerDecoder\n(num_queries=Q)\n→ class logits & mask logits per query"]
-
-    %% Merge masks into dense segmap
-    TransformerDecoder --> Merge["segmap = Σ_q softmax(cls)[c] × sigmoid(mask_q"]
-    Merge --> Output["↑bilinear to input resolution"]
+model = MaskFormerFusion(num_classes=4, mode="cross_fusion", num_queries=100)
+logits = model(rgb, lidar)
 ```
 
-**Notes:**
-- Backbone outputs are lists of feature maps at progressively coarser resolutions.
-- Early fusion (RGB + LiDAR) is performed immediately after the backbone.
-- Pixel decoder reduces multi-scale maps to a single high-resolution feature map.
-- Transformer decoder uses a fixed set of learnable query embeddings to predict class scores and masks; deep supervision returns outputs from all decoder layers.
-- Inference merges query predictions using the MaskFormer formula into a dense segmentation map.
+For a custom training loop, the query loss needs `model.raw_forward(...)`; see [Training from Python](../library.md#training-from-python).
 
+## Research references
+
+- Cheng, Schwing & Kirillov, [*Per-Pixel Classification is Not All You Need for Semantic Segmentation*](https://arxiv.org/abs/2107.06278), 2021. Introduces MaskFormer's mask-classification formulation.
+- Liu et al., [*Swin Transformer V2: Scaling Up Capacity and Resolution*](https://arxiv.org/abs/2111.09883), 2021. The default backbone family in this library.

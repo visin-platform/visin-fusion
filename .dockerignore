@@ -12,8 +12,8 @@ output/
 visualizations/
 *.pth
 *.out
-integrations/.env
 .env
+**/.env
 
 # Datasets and paper material are mounted or archived, not built in; the small sample dataset
 # in tests/data is kept for the quick start and the tests
@@ -23,3 +23,5 @@ paper*/
 data/
 outputs/
 .cache/
+
+*.egg-info/

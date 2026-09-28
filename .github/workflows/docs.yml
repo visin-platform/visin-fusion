@@ -6,10 +6,10 @@ name: Docs
 on:
   push:
     branches: [main]
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, utils/config_schema.py, tools/make_config_reference.py,
+    paths: [docs/**, mkdocs.yml, pyproject.toml, visin_fusion/config/config_schema.py, tools/make_config_reference.py, tools/generate_model_diagrams.py,
             .github/workflows/docs.yml]
   pull_request:
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, utils/config_schema.py, tools/make_config_reference.py,
+    paths: [docs/**, mkdocs.yml, pyproject.toml, visin_fusion/config/config_schema.py, tools/make_config_reference.py, tools/generate_model_diagrams.py,
             .github/workflows/docs.yml]
   workflow_dispatch:
 
@@ -25,9 +25,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-docs.txt
+      - run: pip install -e '.[docs]'
       - name: Config reference matches the schema
         run: python tools/make_config_reference.py --check
+      - name: Model diagrams match their source
+        run: python tools/generate_model_diagrams.py --check
       - name: Build (broken links and missing pages fail)
         run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3

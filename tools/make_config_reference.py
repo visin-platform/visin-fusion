@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write docs/reference/config.md from the config schema (utils/config_schema.py).
+"""Write docs/reference/config.md from the config schema (visin_fusion/config/config_schema.py).
 
     python tools/make_config_reference.py            # write it
     python tools/make_config_reference.py --check    # fail if it is out of date (CI)
@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pydantic import BaseModel  # noqa: E402
 from pydantic_core import PydanticUndefined  # noqa: E402
 
-from utils.config_schema import (  # noqa: E402
-    BACKBONES, CLI, Config, Dataset, DatasetClass, General, Log, TrainClass, Transforms)
+from visin_fusion.config.config_schema import (  # noqa: E402
+    BACKBONES, CLI, Config, Dataset, DatasetClass, General, Log, SCHEMA_VERSION, TrainClass, Transforms)
 
 OUTPUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'docs', 'reference', 'config.md')
 SECTIONS = [
@@ -57,8 +57,9 @@ def default(field):
 
 def render():
     lines = ['# Config reference', '',
-             'Generated from `utils/config_schema.py` by `tools/make_config_reference.py`; do not edit.',
-             '', 'Unknown keys in these sections are errors. Model sections (`CLFT`, `SwinFusion`, `MaskFormer`, '
+             'Generated from `visin_fusion/config/config_schema.py` by `tools/make_config_reference.py`; do not edit.',
+             f'Schema version: `{SCHEMA_VERSION}`. Export JSON Schema with `visin-fusion schema`.',
+             '', 'Unknown keys in these sections are errors. Model sections (`CLFT`, `CLFTv2`, `MaskFormer`, '
              '`Mask2Former`, `DeepLabV3Plus`) take the settings of their model; start from its preset in '
              '`configs/presets/`.', '']
     lines += ['| `CLI.backbone` | Model section | Modes |', '| --- | --- | --- |']

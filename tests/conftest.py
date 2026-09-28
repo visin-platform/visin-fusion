@@ -11,7 +11,7 @@ def pytest_addoption(parser):
         default="offline",
         help="How the e2e tests report to Visin: offline (default) keeps reports on disk and checks "
              "them; online sends them with the VISIN_TOKEN from the environment or "
-             "integrations/.env and reads them back; disabled reports nothing.",
+             "a caller-owned .env/VISIN_ENV_FILE and reads them back; disabled reports nothing.",
     )
     group.addoption(
         "--device",
@@ -20,7 +20,7 @@ def pytest_addoption(parser):
     )
     group.addoption(
         "--models",
-        default="clft,swin,maskformer,mask2former,deeplab",
+        default="clft,clftv2,maskformer,mask2former,deeplab",
         help="Comma-separated models for the e2e tests (default: all).",
     )
     group.addoption(

@@ -1,0 +1,18 @@
+/* Give vector model diagrams enough room to be read at normal size. */
+.md-grid {
+  max-width: 1680px;
+}
+
+.md-content p:has(> img.model-diagram) {
+  overflow-x: auto;
+  margin: 1.5rem 0 0.5rem;
+  border-radius: 18px;
+}
+
+img.model-diagram {
+  display: block;
+  width: 100%;
+  min-width: 1080px;
+  height: auto;
+  border-radius: 18px;
+}

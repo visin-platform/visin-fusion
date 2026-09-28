@@ -48,9 +48,16 @@ jobs:
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements-dev.txt
-      # Coverage floor (.coveragerc); raise it as tests are added (TODO.md, section 3)
-      - run: pytest tests/unit --cov --cov-report=term --cov-fail-under=35
+          pip install -e '.[train,visin,dev]'
+      - name: Unit tests with coverage
+        run: coverage run -m pytest tests/unit
+      - name: Keep unit coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
 
   e2e:
     name: End-to-end (${{ matrix.model }})
@@ -60,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [clft, swin, maskformer, mask2former, deeplab]
+        model: [clft, clftv2, maskformer, mask2former, deeplab]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,7 +77,7 @@ jobs:
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements-dev.txt
+          pip install -e '.[train,visin,dev]'
       - name: Cache pretrained backbone weights
         uses: actions/cache@v4
         with:
@@ -79,9 +86,12 @@ jobs:
             ~/.cache/torch
           key: weights-${{ matrix.model }}-v1
       - name: Train, test, visualize and benchmark on the sample dataset
-        # Pull requests and pushes run the fusion mode (both branches); nightly and manual runs all modes.
+        # Pull requests and pushes run fusion mode; nightly and manual runs all modes.
+        env:
+          COVERAGE_PROCESS_START: ${{ github.workspace }}/.coveragerc
+          PYTHONPATH: ${{ github.workspace }}/tools/coverage_startup:${{ github.workspace }}
         run: >
-          pytest tests/e2e --models ${{ matrix.model }} --device cpu --visin offline -rA
+          coverage run -m pytest tests/e2e --models ${{ matrix.model }} --device cpu --visin offline -rA
           --modes "${{ github.event_name == 'schedule' && 'rgb,lidar,fusion' || github.event.inputs.modes || 'fusion' }}"
       - name: Keep logs of failed runs
         if: failure()
@@ -90,3 +100,30 @@ jobs:
           name: e2e-logs-${{ matrix.model }}
           path: /tmp/pytest-of-*/**/logs/*.log
           if-no-files-found: ignore
+      - name: Keep end-to-end coverage data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.model }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+
+  coverage:
+    name: Package coverage (>90%)
+    needs: [unit, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install coverage
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: coverage-data
+      - name: Combine all package coverage
+        run: |
+          coverage combine coverage-data/*
+          coverage report --fail-under=90.1

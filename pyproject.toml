@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visin-fusion"
+dynamic = ["version"]  # from the git tag (v1.2.3), by setuptools-scm
+description = "Camera and LiDAR fusion models and training tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Toomas Tahves"}]
+keywords = ["semantic segmentation", "sensor fusion", "lidar", "autonomous driving", "pytorch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = ["torch>=2.2", "torchvision>=0.17", "timm>=1.0", "einops>=0.7"]
+
+[project.optional-dependencies]
+train = ["numpy", "scipy", "pydantic>=2", "tqdm", "tensorboard", "Pillow", "opencv-python", "pandas", "matplotlib", "psutil", "nvidia-ml-py", "GPUtil", "thop", "fvcore"]
+visin = ["visin>=0.2", "python-dotenv", "requests"]
+
+dev = ["pytest", "pytest-cov", "ruff"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material", "pydantic>=2"]
+
+[project.scripts]
+visin-fusion = "visin_fusion.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/visin-platform/visin-fusion"
+Documentation = "https://visin-platform.github.io/visin-fusion/"
+Changelog = "https://github.com/visin-platform/visin-fusion/blob/main/CHANGELOG.md"
+Issues = "https://github.com/visin-platform/visin-fusion/issues"
+
+[tool.setuptools.packages.find]
+include = ["visin_fusion*"]
+
+[tool.setuptools.package-data]
+"visin_fusion.config" = ["presets/*.json"]
+
+[tool.setuptools_scm]
+# Builds without git history (a Docker context, a source archive) that are not given
+# SETUPTOOLS_SCM_PRETEND_VERSION
+fallback_version = "0.0.0"

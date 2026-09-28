@@ -12,7 +12,7 @@ SAMPLE = Path(__file__).resolve().parents[1] / 'data' / 'zod_sample'
 
 
 def config_for(mode='cross_fusion', **transforms):
-    config = prepare_config({'extends': 'swin', 'CLI': {'mode': mode}, 'Dataset': {'dataset_root': str(SAMPLE)}})
+    config = prepare_config({'extends': 'clftv2', 'CLI': {'mode': mode}, 'Dataset': {'dataset_root': str(SAMPLE)}})
     config['Dataset']['transforms'].update(transforms)
     return config
 
@@ -23,7 +23,7 @@ def item(config, split='val', index=0):
 
 def test_shapes_follow_the_configured_size():
     sample = item(config_for())
-    size = 256  # the swin preset's resize
+    size = 256  # the clftv2 preset's resize
     assert sample['rgb'].shape == (3, size, size)
     assert sample['lidar'].shape == (3, size, size)
     assert sample['anno'].shape == (size, size)
@@ -67,3 +67,20 @@ def test_missing_annotation_warns_and_gives_an_empty_mask(tmp_path, capsys):
     sample = DatasetPNG(config, 'val', str(dataset / 'validation.txt'))[0]
     assert sample['anno'].sum() == 0
     assert 'no annotation' in capsys.readouterr().out
+
+
+def test_lidar_normalization_is_optional():
+    config = config_for()
+    config['Dataset']['transforms'].pop('lidar_mean')
+    config['Dataset']['transforms'].pop('lidar_std')
+    sample = item(config)
+    assert sample['lidar'].shape == sample['rgb'].shape
+    assert torch.isfinite(sample['lidar']).all()
+
+
+def test_random_crop_supports_128_pixel_input():
+    config = config_for(p_crop=1.0)
+    config['Dataset']['transforms']['resize'] = 128
+    sample = item(config, 'train')
+    assert sample['rgb'].shape == (3, 128, 128)
+    assert sample['anno'].shape == (128, 128)

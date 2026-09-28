@@ -31,10 +31,14 @@ paper2
 paper_sam
 .claude
 
-# docker compose mounts (docker-compose.yml)
+# docker compose mounts (compose.yml)
 /data/
 /outputs/
 /.cache/
 
 # mkdocs build output
 /site/
+
+# Caller-owned credentials and package build metadata
+.env
+*.egg-info/

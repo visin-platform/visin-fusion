@@ -6,7 +6,7 @@ it extends the model's preset (configs/presets/), names the dataset only by its 
 comes from tests/data/zod_sample/dataset.json), and overrides a few training settings.
 
     pytest tests/e2e                              # all models and modes, Visin offline
-    pytest tests/e2e --models swin --modes fusion # one model, one mode
+    pytest tests/e2e --models clftv2 --modes fusion # one model, one mode
     pytest tests/e2e --visin online               # report to the Visin project of VISIN_TOKEN
 """
 import glob
@@ -28,7 +28,7 @@ STAGE_TIMEOUT = 30 * 60  # seconds; CPU runs of the larger models are slow
 
 
 # Test name -> the model's preset in configs/presets/ (the stages are the same for every model)
-PRESETS = {"clft": "clft", "swin": "swin", "maskformer": "maskformer", "mask2former": "mask2former",
+PRESETS = {"clft": "clft", "clftv2": "clftv2", "maskformer": "maskformer", "mask2former": "mask2former",
            "deeplab": "deeplabv3plus"}
 MODELS = PRESETS  # the names --models accepts
 # A few timing runs are enough to check the benchmark works
@@ -93,7 +93,7 @@ def visin_env(mode, spool_dir):
         env.setdefault("VISIN_TOKEN", "e2e-offline")
         env.setdefault("VISIN_URL", "http://127.0.0.1:9")
     else:
-        env["VISIN_MODE"] = "online"  # token and URL from the environment or integrations/.env
+        env["VISIN_MODE"] = "online"  # token and URL from exported variables or a caller-owned env file
     return env
 
 
@@ -181,7 +181,7 @@ def check_online_reports(training_uuid):
     """Visin has the run with its epoch and test result."""
     import visin
 
-    import integrations.vision_service  # noqa: F401  loads integrations/.env and the default URL
+    import integrations.vision_service  # noqa: F401  loads caller env and the default URL
 
     api = visin.Api()
     training = api.training(training_uuid)

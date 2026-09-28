@@ -30,8 +30,8 @@ def test_clft_multiplies_the_rate_by_lr_momentum_each_epoch():
     assert learning_rates(setup, 3) == pytest.approx([8e-5, 8e-5 * 0.99, 8e-5 * 0.99 ** 2])
 
 
-def test_swin_warms_up_then_decays():
-    _, _, setup = setup_for('swin', General={'epochs': 20}, SwinFusion={'warmup_epochs': 5})
+def test_clftv2_warms_up_then_decays():
+    _, _, setup = setup_for('clftv2', General={'epochs': 20}, CLFTv2={'warmup_epochs': 5})
     rates = learning_rates(setup, 20)
     assert rates[0] == pytest.approx(8e-5 * 0.01)
     assert max(rates) == pytest.approx(8e-5) and rates[-1] < rates[5]
@@ -73,11 +73,11 @@ def test_cross_entropy_uses_the_class_weights():
 
 def test_schedule_survives_a_checkpoint(tmp_path):
     # A resumed run continues its schedule instead of starting the warmup again
-    _, _, setup = setup_for('swin', General={'epochs': 20}, SwinFusion={'warmup_epochs': 5})
+    _, _, setup = setup_for('clftv2', General={'epochs': 20}, CLFTv2={'warmup_epochs': 5})
     learning_rates(setup, 7)
     torch.save({'scheduler_state_dict': setup.scheduler.state_dict(),
                 'optimizer_state_dict': setup.optimizer.state_dict()}, tmp_path / 'c.pth')
-    _, _, resumed = setup_for('swin', General={'epochs': 20}, SwinFusion={'warmup_epochs': 5})
+    _, _, resumed = setup_for('clftv2', General={'epochs': 20}, CLFTv2={'warmup_epochs': 5})
     state = torch.load(tmp_path / 'c.pth', weights_only=False)
     resumed.optimizer.load_state_dict(state['optimizer_state_dict'])
     resumed.scheduler.load_state_dict(state['scheduler_state_dict'])

@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-'''
-Contains Python scripts of processes of images and lidars as input.
-
-Created on May 12nd, 2021
-'''
+"""Compatibility imports for visin_fusion.utils."""
+from pathlib import Path
+from visin_fusion.utils import __path__ as _target_path
+__path__ = [str(Path(__file__).parent), *_target_path]
