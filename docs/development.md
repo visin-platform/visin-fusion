@@ -66,7 +66,7 @@ repository's Settings -> Environments.
 ## Docs
 
 ```bash
-pip install -e '.[docs]'
+pip install --group docs
 python tools/make_config_reference.py   # regenerates docs/reference/config.md from the schema
 mkdocs serve
 ```

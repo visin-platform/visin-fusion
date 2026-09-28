@@ -3,15 +3,15 @@ name: Image
 # Builds the training image and pushes it to the GitHub Container Registry:
 #   ghcr.io/<owner>/<repo>:<tag>       GPU (CUDA 13.0 torch)
 #   ghcr.io/<owner>/<repo>:<tag>-cpu   CPU only
-# Tags: the commit SHA always; `latest` from main; `v1.2.3` and `1.2` from version tags.
-# Pull requests build without pushing, to catch a broken Dockerfile.
+# Built for releases only (a v1.2.3 tag): tagged `1.2.3`, `1.2`, the commit SHA, and `latest` unless it
+# is a pre-release. Pull requests that change the image's recipe build without pushing, to catch a
+# broken Dockerfile; run it by hand (workflow_dispatch) for an image of any branch.
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   pull_request:
-    paths: [Dockerfile, .dockerignore, pyproject.toml, visin_fusion/**, .github/workflows/image.yml]
+    paths: [Dockerfile, .dockerignore, pyproject.toml, .github/workflows/image.yml]
   workflow_dispatch:
 
 concurrency:
@@ -54,7 +54,6 @@ jobs:
           flavor: suffix=${{ matrix.suffix }},onlatest=true
           tags: |
             type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - name: Package version (the tag's, or 0.0.0+<sha> between releases)

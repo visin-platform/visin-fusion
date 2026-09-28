@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e '.[docs]'
+      - run: pip install --upgrade pip && pip install --group docs  # no package, no torch
       - name: Config reference matches the schema
         run: python tools/make_config_reference.py --check
       - name: Model diagrams match their source

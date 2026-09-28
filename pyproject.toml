@@ -26,6 +26,9 @@ train = ["numpy", "scipy", "pydantic>=2", "tqdm", "tensorboard", "Pillow", "open
 visin = ["visin>=0.2", "python-dotenv", "requests"]
 
 dev = ["pytest", "pytest-cov", "ruff"]
+
+[dependency-groups]
+# The docs site only, without the package or torch: pip install --group docs
 docs = ["mkdocs>=1.6,<2", "mkdocs-material", "pydantic>=2"]
 
 [project.scripts]
