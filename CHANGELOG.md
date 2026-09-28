@@ -10,6 +10,8 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-28
+
 - Packaged the code as `visin_fusion` with model, training and Visin extras, a console command,
   versioned JSON Schema, model-owned training defaults, and optional reporting callbacks.
 - Existing `run.py` and legacy import paths remain available in a source checkout.
@@ -54,3 +56,6 @@ The training code became a generic tool: one implementation per stage for every 
 - A failing benchmark config was skipped and an empty result reported; benchmarks timed models in
   training mode after profiling.
 - A missing annotation silently became an empty mask; it now prints a warning naming the file.
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/visin-platform/visin-fusion/releases/tag/v0.1.0
