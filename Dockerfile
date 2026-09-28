@@ -10,8 +10,6 @@ RUN apt-get update \
 WORKDIR /app
 RUN pip install torch torchvision --index-url ${TORCH_INDEX}
 COPY . .
-# The package version: .git is not in the build context, so image.yml passes it (the tag's version)
-ARG VERSION=0.0.0
-RUN SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION} pip install '.[train,visin]'
+RUN pip install '.[train,visin]'
 ENTRYPOINT ["visin-fusion", "run"]
 CMD ["--help"]

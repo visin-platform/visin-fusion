@@ -1,13 +1,21 @@
 # Changelog
 
-## Unreleased
+All notable changes to this package are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Until 1.0, a minor version may change
+the public API; a patch version never does.
+
+The release workflow writes each version's entry from the conventional commits since the previous
+one, together with anything written by hand under Unreleased.
+
+## [Unreleased]
 
 - Packaged the code as `visin_fusion` with model, training and Visin extras, a console command,
   versioned JSON Schema, model-owned training defaults, and optional reporting callbacks.
 - Existing `run.py` and legacy import paths remain available in a source checkout.
 
 The training code became a generic tool: one implementation per stage for every model
-(`stages/<stage>/common.py`, `models/registry.py`), configs built from presets, datasets described by
+(`visin_fusion/engine/stages/<stage>/common.py`, `visin_fusion/models/registry.py`), configs built from presets, datasets described by
 `dataset.json` and downloadable from Visin. Results from earlier code differ in these ways:
 
 ### Changes to results

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77", "setuptools-scm>=8", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "visin-fusion"
-dynamic = ["version"]  # from the git tag (v1.2.3), by setuptools-scm
+dynamic = ["version"]  # visin_fusion/_version.py, written by tools/release.py
 description = "Camera and LiDAR fusion models and training tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,10 +43,8 @@ Issues = "https://github.com/visin-platform/visin-fusion/issues"
 [tool.setuptools.packages.find]
 include = ["visin_fusion*"]
 
+[tool.setuptools.dynamic]
+version = {attr = "visin_fusion._version.__version__"}
+
 [tool.setuptools.package-data]
 "visin_fusion.config" = ["presets/*.json"]
-
-[tool.setuptools_scm]
-# Builds without git history (a Docker context, a source archive) that are not given
-# SETUPTOOLS_SCM_PRETEND_VERSION
-fallback_version = "0.0.0"

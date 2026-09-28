@@ -1,7 +1,4 @@
 """Camera and LiDAR fusion models and training tools."""
-from importlib.metadata import PackageNotFoundError, version
+from visin_fusion._version import __version__
 
-try:
-    __version__ = version('visin-fusion')
-except PackageNotFoundError:  # a source checkout that was never installed
-    __version__ = '0.0.0+unknown'
+__all__ = ['__version__']

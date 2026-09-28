@@ -1,49 +1,58 @@
+# Publishes the documentation site to GitHub Pages.
+#
+# Called by release.yml with the new tag, so the site describes the version on PyPI. It can also be
+# run by hand, to publish a documentation fix without a release. Pull requests check the docs build
+# in ci.yml. Repository settings: Pages -> Source: GitHub Actions.
+
 name: Docs
 
-# Builds the docs site on every pull request that touches it; publishes it to GitHub Pages from main.
-# Repository settings: Pages -> Source: GitHub Actions.
-
 on:
-  push:
-    branches: [main]
-    paths: [docs/**, mkdocs.yml, pyproject.toml, visin_fusion/config/config_schema.py, tools/make_config_reference.py, tools/generate_model_diagrams.py,
-            .github/workflows/docs.yml]
-  pull_request:
-    paths: [docs/**, mkdocs.yml, pyproject.toml, visin_fusion/config/config_schema.py, tools/make_config_reference.py, tools/generate_model_diagrams.py,
-            .github/workflows/docs.yml]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to publish (default: the latest release tag)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Default to the latest release
+        if: inputs.ref == ''
+        run: |
+          TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          if [ -n "$TAG" ]; then git checkout "$TAG"; fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install --upgrade pip && pip install --group docs  # no package, no torch
-      - name: Config reference matches the schema
-        run: python tools/make_config_reference.py --check
-      - name: Model diagrams match their source
-        run: python tools/generate_model_diagrams.py --check
-      - name: Build (broken links and missing pages fail)
-        run: mkdocs build --strict
+      - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request'
         with:
-          path: site
+          path: site/
 
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

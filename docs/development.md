@@ -37,31 +37,38 @@ CI (`.github/workflows/ci.yml`) runs on every pull request:
 - `ruff check` with the rules in `ruff.toml`
 - the unit tests and end-to-end tests on CPU, one job per model (fusion mode; all modes nightly)
 - combined coverage for every module in `visin_fusion`, including models and CLI stages, above 90%
+- the package: the sdist and wheel build, and the wheel works installed alone, with only the core
+  dependencies and with every extra
+- the docs build (`mkdocs build --strict`), with the config reference and model diagrams up to date
 
-`.github/workflows/image.yml` builds the Docker images, and `.github/workflows/docs.yml` publishes this
-site.
+The docs site and the Docker images are published by releases, not by pushes to `main`.
 
 ## Releasing
 
-A version tag publishes the package to PyPI, a GitHub release and the Docker images. Once CI passes on
-`main`:
+A release is one run of `.github/workflows/release.yml`, started by hand: Actions -> Release -> Run
+workflow, on `main`. Nothing is edited by hand:
+
+1. CI runs; nothing is published that it has not passed.
+2. `tools/release.py` picks the version from the [Conventional Commits](https://www.conventionalcommits.org)
+   since the last release: a breaking change is major (minor before 1.0), a `feat` is minor, anything
+   else a patch. `release-as` overrides it with `patch`, `minor`, `major` or an exact version.
+3. It writes `visin_fusion/_version.py` and the `CHANGELOG.md` entry: the `feat`, `fix` and `perf`
+   commits, after anything written by hand under `## [Unreleased]`. Then it commits
+   `chore(release): <version>` and tags `v<version>`.
+4. The package goes to PyPI, the GitHub release gets the changelog entry as its notes, and the docs
+   site and Docker images are published for the tag.
+
+`target=testpypi` rehearses a release: the same build goes to TestPyPI, and nothing is committed,
+tagged or released. To see what a release would contain without running it:
 
 ```bash
-git tag v1.2.3 && git push origin v1.2.3
+python tools/release.py --dry-run
 ```
 
-The version comes from the tag (setuptools-scm), so nothing in the repository is edited. Between
-releases, a checkout reports a development version such as `1.2.4.dev3+g1a2b3c4`.
-
-`.github/workflows/release.yml` builds the sdist and wheel, installs the wheel with only the core
-dependencies and with every extra, runs the unit tests, then publishes to PyPI and creates the GitHub
-release. Its notes are the `## 1.2.3` section of `CHANGELOG.md` if there is one, otherwise GitHub's notes
-generated from the pull requests and commits since the previous tag. Tags like `v1.2.0rc1` are marked as
-pre-releases.
-
-PyPI publishing uses a trusted publisher, so no token is stored. Set it up once on PyPI (project
-`visin-fusion`, workflow `release.yml`, environment `pypi`) and create the `pypi` environment under the
-repository's Settings -> Environments.
+One-time setup: add a trusted publisher on PyPI and TestPyPI (project `visin-fusion`, workflow
+`release.yml`, environments `pypi` and `testpypi`), create those two environments under the
+repository's Settings -> Environments, and set Settings -> Pages -> Source to GitHub Actions. No token
+is stored.
 
 ## Docs
 
