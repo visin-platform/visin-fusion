@@ -111,8 +111,13 @@ def test_notes_for_a_missing_version_are_an_error():
 
 def test_hand_written_paragraphs_and_section_order_are_kept():
     unreleased = "- A.\n- B.\n\nA paragraph.\n\n### Changes to results\n\n- C.\n\n### Fixed\n\n- D."
-    text = release.update_changelog(f"# Changelog\n\n## [Unreleased]\n\n{unreleased}\n", "0.1.0", None,
-                                    release.render_entry(commits("feat: E")), "2026-09-25")
+    text = release.update_changelog(
+        f"# Changelog\n\n## [Unreleased]\n\n{unreleased}\n",
+        "0.1.0",
+        None,
+        release.render_entry(commits("feat: E")),
+        "2026-09-25",
+    )
     assert release.release_notes(text, "0.1.0") == unreleased + "\n\n### Added\n\n- E\n"
 
 
@@ -123,7 +128,11 @@ def test_the_real_changelog_can_be_released():
     current = release.read_version()
     released_before = f"## [{current}]" in text
     upcoming = release.next_version(current, [], "minor") if released_before else current
-    unreleased = re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)", text, re.M | re.S).group(1).strip()
+    unreleased = (
+        re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)", text, re.MULTILINE | re.DOTALL)
+        .group(1)
+        .strip()
+    )
     released = release.update_changelog(text, upcoming, current if released_before else None, {}, "2026-09-25")
     assert release.release_notes(released, upcoming).strip() == (unreleased or "No user-facing changes.")
     if released_before:

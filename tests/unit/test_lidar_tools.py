@@ -1,14 +1,10 @@
 """tools/project_lidar.py and tools/dataset_stats.py on synthetic data."""
-import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
+from dataset_stats import class_frequencies, lidar_statistics, suggested_weights
 from PIL import Image
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
-from dataset_stats import class_frequencies, lidar_statistics, suggested_weights  # noqa: E402
-from project_lidar import encode, project, scaled_intrinsics  # noqa: E402
+from project_lidar import encode, project, scaled_intrinsics
 
 K = [[100, 0, 50], [0, 100, 40], [0, 0, 1]]
 IDENTITY = np.eye(4)
@@ -50,17 +46,17 @@ def test_lidar_statistics_ignore_pixels_without_a_point(tmp_path):
     image = np.zeros((2, 2, 3), dtype=np.uint8)
     image[0, 0] = [255, 0, 51]
     image[1, 1] = [0, 255, 51]
-    Image.fromarray(image).save(tmp_path / 'a.png')
-    mean, std = lidar_statistics([tmp_path / 'a.png'])
+    Image.fromarray(image).save(tmp_path / "a.png")
+    mean, std = lidar_statistics([tmp_path / "a.png"])
     assert mean == pytest.approx([0.5, 0.5, 0.2])
     assert std == pytest.approx([0.5, 0.5, 0.0])
 
 
 def test_class_frequencies_merge_dataset_classes(tmp_path):
     labels = np.array([[0, 0, 1, 2], [3, 3, 3, 9]], dtype=np.uint8)  # 9 is not mapped: ignored
-    Image.fromarray(labels).save(tmp_path / 'a.png')
-    train_classes = [{'index': 0, 'dataset_mapping': [0, 1]}, {'index': 1, 'dataset_mapping': [2, 3]}]
-    assert class_frequencies([tmp_path / 'a.png'], train_classes).tolist() == pytest.approx([3 / 7, 4 / 7])
+    Image.fromarray(labels).save(tmp_path / "a.png")
+    train_classes = [{"index": 0, "dataset_mapping": [0, 1]}, {"index": 1, "dataset_mapping": [2, 3]}]
+    assert class_frequencies([tmp_path / "a.png"], train_classes).tolist() == pytest.approx([3 / 7, 4 / 7])
 
 
 def test_suggested_weights_balance_by_median_frequency():

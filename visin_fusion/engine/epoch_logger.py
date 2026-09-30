@@ -1,9 +1,12 @@
 import json
-from pathlib import Path
-from datetime import datetime
+import logging
 import math
+from datetime import datetime
+from pathlib import Path
 
 from visin_fusion.engine.epoch_ids import epoch_uuid_for
+
+logger = logging.getLogger(__name__)
 
 
 def clean_nan_values(obj):
@@ -18,16 +21,16 @@ def clean_nan_values(obj):
     """
     if isinstance(obj, dict):
         return {key: clean_nan_values(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
+    if isinstance(obj, list):
         return [clean_nan_values(item) for item in obj]
-    elif isinstance(obj, float) and math.isnan(obj):
+    if isinstance(obj, float) and math.isnan(obj):
         return 0.0
-    else:
-        return obj
+    return obj
 
 
-def log_epoch_results(epoch, training_uuid, results, log_dir, learning_rate=None, epoch_time=None,
-                      system_info=None, run=None):
+def log_epoch_results(
+    epoch, training_uuid, results, log_dir, learning_rate=None, epoch_time=None, system_info=None, run=None
+):
     """
     Log training and validation results for a specific epoch, and report them to Visin.
 
@@ -57,7 +60,7 @@ def log_epoch_results(epoch, training_uuid, results, log_dir, learning_rate=None
         "epoch_uuid": epoch_uuid,
         "epoch": epoch,
         "timestamp": datetime.now().isoformat(),
-        "results": results
+        "results": results,
     }
 
     if learning_rate is not None:
@@ -79,9 +82,9 @@ def log_epoch_results(epoch, training_uuid, results, log_dir, learning_rate=None
     filename = f"epoch_{epoch}_{epoch_uuid}.json"
     filepath = epochs_dir / filename
 
-    with open(filepath, 'w') as f:
+    with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
 
-    print(f"Epoch {epoch} results logged to {filepath}")
+    logger.info("Epoch %s results logged to %s", epoch, filepath)
 
     return epoch_uuid

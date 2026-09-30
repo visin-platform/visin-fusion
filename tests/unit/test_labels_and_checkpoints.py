@@ -1,13 +1,14 @@
 """IoU areas, class relabelling, and how checkpoints and epoch logs name their run."""
+
 import json
 
 import numpy as np
 import pytest
 import torch
 
-from integrations.vision_service import parse_checkpoint_name, training_uuid_for_epoch
-from utils.helpers import relabel_annotation
-from utils.metrics import find_overlap_exclude_bg_ignore
+from visin_fusion.engine.epoch_ids import parse_checkpoint_name, training_uuid_for_epoch
+from visin_fusion.utils.helpers import relabel_annotation
+from visin_fusion.utils.metrics import find_overlap_exclude_bg_ignore
 
 
 def logits_for(prediction, n_classes):
@@ -20,10 +21,10 @@ def test_iou_areas_by_hand():
     anno = torch.tensor([[[0, 1, 1, 2]]])
     pred = torch.tensor([[[1, 1, 2, 2]]])
     overlap, predicted, label, union = find_overlap_exclude_bg_ignore(3, logits_for(pred, 3), anno)
-    assert overlap.tolist() == [1, 1]      # class 1: pixel 1; class 2: pixel 3
+    assert overlap.tolist() == [1, 1]  # class 1: pixel 1; class 2: pixel 3
     assert predicted.tolist() == [2, 2]
     assert label.tolist() == [2, 1]
-    assert union.tolist() == [3, 2]        # IoU 1/3 and 1/2
+    assert union.tolist() == [3, 2]  # IoU 1/3 and 1/2
 
 
 def test_background_is_not_evaluated():
@@ -33,11 +34,15 @@ def test_background_is_not_evaluated():
     assert (union > 0).all()  # clamped, so IoU is 0 rather than a division by zero
 
 
-TRAIN_CLASSES = {'Dataset': {'train_classes': [
-    {'name': 'background', 'index': 0, 'dataset_mapping': [0, 1]},
-    {'name': 'vehicle', 'index': 1, 'dataset_mapping': [2]},
-    {'name': 'human', 'index': 2, 'dataset_mapping': [4, 5]},
-]}}
+TRAIN_CLASSES = {
+    "Dataset": {
+        "train_classes": [
+            {"name": "background", "index": 0, "dataset_mapping": [0, 1]},
+            {"name": "vehicle", "index": 1, "dataset_mapping": [2]},
+            {"name": "human", "index": 2, "dataset_mapping": [4, 5]},
+        ]
+    }
+}
 
 
 def test_relabel_merges_dataset_classes():
@@ -51,26 +56,32 @@ def test_relabel_turns_unmapped_classes_into_background():
     assert relabel_annotation(anno, TRAIN_CLASSES).tolist() == [[[0, 0, 1]]]
 
 
-@pytest.mark.parametrize('name, expected', [
-    ('logs/x/checkpoints/epoch_12_7a437f6c-a2c3-5389-b500-62e165b628c4.pth',
-     (12, '7a437f6c-a2c3-5389-b500-62e165b628c4')),
-    ('checkpoint_3.pth', (None, None)),
-    ('model.pth', (None, None)),
-])
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (
+            "logs/x/checkpoints/epoch_12_7a437f6c-a2c3-5389-b500-62e165b628c4.pth",
+            (12, "7a437f6c-a2c3-5389-b500-62e165b628c4"),
+        ),
+        ("checkpoint_3.pth", (None, None)),
+        ("model.pth", (None, None)),
+    ],
+)
 def test_checkpoint_names(name, expected):
     assert parse_checkpoint_name(name) == expected
 
 
 def test_training_is_found_from_an_epoch_log(tmp_path):
-    epochs = tmp_path / 'epochs'
+    epochs = tmp_path / "epochs"
     epochs.mkdir()
-    (epochs / 'epoch_0_abc.json').write_text(json.dumps({'training_uuid': 'run-1', 'epoch_uuid': 'abc'}))
-    assert training_uuid_for_epoch(str(tmp_path), 'abc') == 'run-1'
-    assert training_uuid_for_epoch(str(tmp_path), 'other') is None
+    (epochs / "epoch_0_abc.json").write_text(json.dumps({"training_uuid": "run-1", "epoch_uuid": "abc"}))
+    assert training_uuid_for_epoch(str(tmp_path), "abc") == "run-1"
+    assert training_uuid_for_epoch(str(tmp_path), "other") is None
 
 
 def test_epoch_uuids_are_deterministic():
     import visin
-    first = visin.epoch_uuid_for('c331414c-2513-49b7-b2f3-b41763307f0c', 0)
-    assert first == visin.epoch_uuid_for('c331414c-2513-49b7-b2f3-b41763307f0c', 0)
-    assert first != visin.epoch_uuid_for('c331414c-2513-49b7-b2f3-b41763307f0c', 1)
+
+    first = visin.epoch_uuid_for("c331414c-2513-49b7-b2f3-b41763307f0c", 0)
+    assert first == visin.epoch_uuid_for("c331414c-2513-49b7-b2f3-b41763307f0c", 0)
+    assert first != visin.epoch_uuid_for("c331414c-2513-49b7-b2f3-b41763307f0c", 1)

@@ -2,10 +2,10 @@
 
 Every script in this project reports through the functions here:
 
-    stages/train/*.py       start_training_run()     the run; the training engine logs each epoch to it
-    stages/test/*.py        report_test_results()    a test result on the tested checkpoint's epoch
-    stages/benchmark/*.py    report_benchmark()       a benchmark on the measured checkpoint's epoch
-    stages/visualize/*.py   attach_to_training() and visualization_uploader.queue_visualizations()
+    engine/stages/train       start_training_run()     the run; the training engine logs each epoch to it
+    engine/stages/test        report_test_results()    a test result on the tested checkpoint's epoch
+    engine/stages/benchmark   report_benchmark()       a benchmark on the measured checkpoint's epoch
+    engine/stages/visualize   attach_to_training() and visualization_uploader.queue_visualizations()
 
 Configuration comes from exported variables, ``VISIN_ENV_FILE``, or the caller's ``.env``:
 
@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from typing import Any
 
 from visin_fusion.integrations.settings import load_environment
@@ -35,13 +34,15 @@ from visin_fusion.integrations.settings import load_environment
 try:
     import visin
 except ImportError as exc:  # pragma: no cover - an environment problem, stated plainly
-    raise ImportError(
-        "visin-fusion reports to Visin through the visin package: pip install visin"
-    ) from exc
+    raise ImportError("visin-fusion reports to Visin through the visin package: pip install visin") from exc
 
-from visin_fusion.engine.epoch_ids import (parse_checkpoint_name, training_uuid_for_checkpoint,  # noqa: F401
-                                           training_uuid_for_epoch, training_uuid_for_run)
+from visin_fusion.engine.epoch_ids import (
+    training_uuid_for_epoch,
+    training_uuid_for_run,
+)
 from visin_fusion.utils.helpers import get_training_uuid_from_logs
+
+logger = logging.getLogger(__name__)
 
 load_environment()
 
@@ -51,11 +52,6 @@ load_environment()
 DEFAULT_VISIN_URL = "https://vision-api.visin.eu"
 if os.getenv("VISIN_TOKEN") and not (os.getenv("VISIN_URL") or os.getenv("VISIN_API_URL")):
     os.environ["VISIN_URL"] = DEFAULT_VISIN_URL
-
-# This project does not configure logging; show visin's lines like the scripts'
-# own prints: which run, what was sent, what failed.
-if not logging.getLogger().handlers:
-    visin.enable_console_logging(stream=sys.stdout)
 
 # The UUID an epoch of a run always has. Checkpoint file names carry it
 # (epoch_{n}_{uuid}.pth), which is how the later scripts find the epoch.
@@ -90,7 +86,7 @@ def start_training_run(config: dict[str, Any], *, model: str) -> tuple[visin.Run
     resumed = run.resumed if run.resumed is not None else resumed_locally
     if not resumed:
         run.log_config(config, name=model)
-    print(f"Training UUID: {training_uuid} ({'resumed' if resumed else 'new'} run; Visin: {run.mode})")
+    logger.info("Training UUID: %s (%s run; Visin: %s)", training_uuid, ("resumed" if resumed else "new"), run.mode)
     return run, training_uuid
 
 
@@ -105,7 +101,7 @@ def attach_to_training(log_dir: str, *, epoch_uuid: str | None = None) -> visin.
     training_uuid = training_uuid_for_epoch(log_dir, epoch_uuid) if epoch_uuid else None
     training_uuid = training_uuid or get_training_uuid_from_logs(log_dir)[0]
     if not training_uuid:
-        print(f"Visin: no training UUID in the epoch logs under {log_dir}; not reporting")
+        logger.info("Visin: no training UUID in the epoch logs under %s; not reporting", log_dir)
         return visin.Run.disabled()
     return visin.Run.attach(training_uuid, mark_status=False)
 
@@ -137,7 +133,7 @@ def report_benchmark(
 ) -> None:
     """Send benchmark measurements, linked to the run and checkpoint they measured."""
     if not training_uuid:
-        print("Visin: the benchmark names no training run; not reporting it")
+        logger.info("Visin: the benchmark names no training run; not reporting it")
         return
     with visin.Run.attach(training_uuid, mark_status=False) as run:
         run.log_benchmark(results, system_info, epoch=epoch, epoch_uuid=epoch_uuid)

@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
 """Render any model's predictions on a list of frames: segment, overlay, compare and correct_only images.
 
-The model is the best checkpoint in Log.logdir, built through models/registry.py. Frames default to the
+The model is the best checkpoint in Log.logdir, built through visin_fusion/models/registry.py. Frames default to the
 dataset's visualization split. With --upload, the images go to Visin on the checkpoint's epoch.
 
-    python -m stages.visualize.common -c <config.json> [-p <frames.txt | image.png>] [--upload]
+    python -m visin_fusion.engine.stages.visualize.common -c <config.json> [-p <frames.txt | image.png>] [--upload]
 """
+
 import argparse
+import logging
 import os
 import sys
 
 import torch
 
-from visin_fusion.data.data_loader import DataLoader as InferenceDataLoader
-from visin_fusion.engine.visualizer import Visualizer
-from visin_fusion.engine.epoch_ids import parse_checkpoint_name
-from visin_fusion.engine.callbacks import configured_callbacks
-from visin_fusion.models.registry import build_model, segment
 from visin_fusion.config.config import load_config
-from visin_fusion.utils.helpers import get_annotation_path, get_device, get_lidar_path, get_model_path
 from visin_fusion.config.splits import visualization_split
+from visin_fusion.data.data_loader import DataLoader as InferenceDataLoader
+from visin_fusion.engine.callbacks import configured_callbacks
+from visin_fusion.engine.epoch_ids import parse_checkpoint_name
+from visin_fusion.engine.visualizer import Visualizer
+from visin_fusion.logging_setup import configure_logging
+from visin_fusion.models.registry import build_model, segment
+from visin_fusion.utils.helpers import get_annotation_path, get_device, get_lidar_path, get_model_path
+
+logger = logging.getLogger(__name__)
 
 
 def load_frames(path):
     """Frames to render: one image, or the lines of a split file."""
-    if path.endswith(('.png', '.jpg', '.jpeg')):
+    if path.endswith((".png", ".jpg", ".jpeg")):
         return [path]
     with open(path) as f:
         return [line.strip() for line in f if line.strip()]
@@ -33,7 +38,7 @@ def load_frames(path):
 def load_model(config, checkpoint, device):
     """The model with the checkpoint's weights (random init only: the weights come from the checkpoint)."""
     model = build_model(config, pretrained=False)
-    state = torch.load(checkpoint, map_location=device, weights_only=False)['model_state_dict']
+    state = torch.load(checkpoint, map_location=device, weights_only=False)["model_state_dict"]
     model.load_state_dict(state)  # strict: a checkpoint for another model must not load
     return model.to(device).eval()
 
@@ -43,65 +48,76 @@ def render(config, frames, model_path, output_dir, upload=False, epoch_uuid=None
     device = get_device(config)
     model = load_model(config, model_path, device)
     data_loader, visualizer = InferenceDataLoader(config), Visualizer(config, output_dir)
-    dataroot = os.path.abspath(config['Dataset']['dataset_root'])
-    mode = config['CLI']['mode']
+    dataroot = os.path.abspath(config["Dataset"]["dataset_root"])
+    mode = config["CLI"]["mode"]
 
     epoch, checkpoint_uuid = parse_checkpoint_name(model_path)
     epoch_uuid = epoch_uuid or checkpoint_uuid
     events = configured_callbacks(config) if upload and epoch_uuid else None
     if upload and not epoch_uuid:
-        print(f"Warning: no epoch UUID in the checkpoint name {model_path}; not uploading")
+        logger.warning("No epoch UUID in the checkpoint name %s; not uploading", model_path)
 
     failed = queued = 0
     for index, frame in enumerate(frames, 1):
         cam_path = frame if os.path.isabs(frame) else os.path.join(dataroot, frame)
         anno_path = get_annotation_path(cam_path, config)
-        print(f"Rendering {index}/{len(frames)}: {os.path.basename(cam_path)}")
+        logger.info("Rendering %s/%s: %s", index, len(frames), os.path.basename(cam_path))
         try:
             rgb = data_loader.load_rgb(cam_path).to(device).unsqueeze(0)
-            lidar = rgb if mode == 'rgb' else data_loader.load_lidar(get_lidar_path(cam_path, config)).to(device).unsqueeze(0)
+            lidar = (
+                rgb
+                if mode == "rgb"
+                else data_loader.load_lidar(get_lidar_path(cam_path, config)).to(device).unsqueeze(0)
+            )
             with torch.no_grad():
                 prediction = segment(model, config, rgb, lidar)
             visualizer.visualize_prediction(prediction, cam_path, anno_path, index)
         except Exception as e:  # keep rendering the other frames; the run still fails at the end
-            print(f"Failed to render {cam_path}: {type(e).__name__}: {e}")
+            logger.error("Failed to render %s: %s: %s", cam_path, type(e).__name__, e)
             failed += 1
             continue
         if events is not None:
-            events.emit('on_visualization', config=config, epoch=epoch or 0, epoch_uuid=epoch_uuid,
-                        output_dir=output_dir, image_name=os.path.basename(cam_path))
+            events.emit(
+                "on_visualization",
+                config=config,
+                epoch=epoch or 0,
+                epoch_uuid=epoch_uuid,
+                output_dir=output_dir,
+                image_name=os.path.basename(cam_path),
+            )
             queued += bool(events.callbacks)
 
     if events is not None:
-        events.emit('on_run_end', config=config, error=None)
-        print(f"Queued for upload: {queued}/{len(frames)}")
-    print(f"Rendered {len(frames) - failed}/{len(frames)} frames to {output_dir}")
+        events.emit("on_run_end", config=config, error=None)
+        logger.info("Queued for upload: %s/%s", queued, len(frames))
+    logger.info("Rendered %s/%s frames to %s", len(frames) - failed, len(frames), output_dir)
     return failed
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('-c', '--config', required=True, help='config file')
-    parser.add_argument('-p', '--path', help='an image, or a file listing frames (default: the visualization split)')
-    parser.add_argument('--upload', action='store_true', help="upload the images to Visin on the checkpoint's epoch")
-    parser.add_argument('--epoch-uuid', help="epoch to upload to (default: the checkpoint's)")
-    parser.add_argument('--output-dir', '--output_dir', help='where to write (default: <Log.logdir>/visualizations)')
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("-c", "--config", required=True, help="config file")
+    parser.add_argument("-p", "--path", help="an image, or a file listing frames (default: the visualization split)")
+    parser.add_argument("--upload", action="store_true", help="upload the images to Visin on the checkpoint's epoch")
+    parser.add_argument("--epoch-uuid", help="epoch to upload to (default: the checkpoint's)")
+    parser.add_argument("--output-dir", "--output_dir", help="where to write (default: <Log.logdir>/visualizations)")
     args = parser.parse_args(argv)
+    configure_logging()
 
     config = load_config(args.config)
     model_path = get_model_path(config, best=True)
     if not model_path:
         sys.exit(f"No checkpoint in {config['Log']['logdir']}/checkpoints; train first")
-    print(f"Using model: {model_path}")
+    logger.info("Using model: %s", model_path)
     frames_file = args.path or visualization_split(config)
     frames = load_frames(frames_file)
-    print(f"{len(frames)} frames from {frames_file}")
+    logger.info("%s frames from %s", len(frames), frames_file)
 
-    output_dir = args.output_dir or os.path.join(config['Log']['logdir'].rstrip('/'), 'visualizations')
+    output_dir = args.output_dir or os.path.join(config["Log"]["logdir"].rstrip("/"), "visualizations")
     failed = render(config, frames, model_path, output_dir, args.upload, args.epoch_uuid)
     if failed:
         sys.exit(f"{failed} of {len(frames)} frames failed to render")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

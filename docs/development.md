@@ -8,7 +8,6 @@ visin_fusion/engine/          callbacks, training, testing, visualization and st
 visin_fusion/data/            dataset loaders and resolvers
 visin_fusion/config/          config schema, presets, manifests and splits
 visin_fusion/integrations/    optional Visin callback
-run.py                        compatibility launcher for existing jobs
 configs/                      quickstart.json and example presets
 tools/                        sample data, dataset manifests, LiDAR projection
 slurms/                       HPC job script
@@ -34,7 +33,7 @@ overrides) and run the stage scripts as subprocesses. See `tests/README.md`.
 CI (`.github/workflows/ci.yml`) runs on every pull request:
 
 - every file compiles (`python -m compileall`)
-- `ruff check` with the rules in `ruff.toml`
+- `ruff check` and `ruff format --check`, with the rules in `pyproject.toml`
 - the unit tests and end-to-end tests on CPU, one job per model (fusion mode; all modes nightly)
 - combined coverage for every module in `visin_fusion`, including models and CLI stages, above 90%
 - the package: the sdist and wheel build, and the wheel works installed alone, with only the core

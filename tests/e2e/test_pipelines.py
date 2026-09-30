@@ -2,13 +2,14 @@
 
 Each case runs the four stage scripts as subprocesses on tests/data/zod_sample for one epoch,
 with all outputs in a temporary log directory. The config is written the way a user writes one:
-it extends the model's preset (configs/presets/), names the dataset only by its root (the rest
+it extends the model's preset (visin_fusion/config/presets/), names the dataset only by its root (the rest
 comes from tests/data/zod_sample/dataset.json), and overrides a few training settings.
 
     pytest tests/e2e                              # all models and modes, Visin offline
     pytest tests/e2e --models clftv2 --modes fusion # one model, one mode
     pytest tests/e2e --visin online               # report to the Visin project of VISIN_TOKEN
 """
+
 import glob
 import json
 import os
@@ -17,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from run import stage_command
-from utils.config_schema import BACKBONES
+from visin_fusion.cli import stage_command
+from visin_fusion.config.config_schema import BACKBONES
 
 REPO = Path(__file__).resolve().parents[2]
 SAMPLE = REPO / "tests" / "data" / "zod_sample"
@@ -27,16 +28,21 @@ VISUALIZATION_KINDS = ["segment", "overlay", "compare", "correct_only"]
 STAGE_TIMEOUT = 30 * 60  # seconds; CPU runs of the larger models are slow
 
 
-# Test name -> the model's preset in configs/presets/ (the stages are the same for every model)
-PRESETS = {"clft": "clft", "clftv2": "clftv2", "maskformer": "maskformer", "mask2former": "mask2former",
-           "deeplab": "deeplabv3plus"}
+# Test name -> the model's preset in visin_fusion/config/presets/ (the stages are the same for every model)
+PRESETS = {
+    "clft": "clft",
+    "clftv2": "clftv2",
+    "maskformer": "maskformer",
+    "mask2former": "mask2former",
+    "deeplab": "deeplabv3plus",
+}
 MODELS = PRESETS  # the names --models accepts
 # A few timing runs are enough to check the benchmark works
 BENCHMARK_ARGS = ["--num-runs", "5", "--warmup-runs", "1"]
 
 
 def preset(model):
-    with open(REPO / "configs" / "presets" / f"{PRESETS[model]}.json") as f:
+    with open(REPO / "visin_fusion" / "config" / "presets" / f"{PRESETS[model]}.json") as f:
         return json.load(f)
 
 
@@ -47,6 +53,7 @@ def command(model, stage, config_path, **options):
 
 def pytest_generate_tests(metafunc):
     if "case" in metafunc.fixturenames:
+
         def option(name):
             return [value.strip() for value in metafunc.config.getoption(name).split(",") if value.strip()]
 
@@ -73,8 +80,7 @@ def make_config(model, mode, logdir, device):
         "tags": ["e2e", model, mode],
         "Dataset": {"dataset_root": str(SAMPLE)},
         "Log": {"logdir": str(logdir)},
-        "General": {"device": device, "epochs": 1, "batch_size": 2, "early_stop_patience": 1,
-                    "max_checkpoints": 1},
+        "General": {"device": device, "epochs": 1, "batch_size": 2, "early_stop_patience": 1, "max_checkpoints": 1},
         # One epoch, no warmup (schedules follow General.epochs)
         section: {"warmup_epochs": 0},
     }
@@ -102,7 +108,11 @@ def run_stage(name, cmd, env, logdir):
     log_path = Path(logdir) / f"{name}.log"
     with open(log_path, "w") as log:
         result = subprocess.run(
-            cmd, cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT,
+            cmd,
+            cwd=REPO,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
             timeout=STAGE_TIMEOUT,
         )
     output = log_path.read_text()
@@ -181,7 +191,7 @@ def check_online_reports(training_uuid):
     """Visin has the run with its epoch and test result."""
     import visin
 
-    import integrations.vision_service  # noqa: F401  loads caller env and the default URL
+    import visin_fusion.integrations.visin  # noqa: F401  loads caller env and the default URL
 
     api = visin.Api()
     training = api.training(training_uuid)

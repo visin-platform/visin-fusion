@@ -1,4 +1,5 @@
 """Pipeline events and optional reporting callbacks."""
+
 from visin_fusion.integrations.settings import pipeline_key_present
 
 
@@ -41,6 +42,7 @@ class Events:
 # Retain this name for integrations and tests that used the earlier helper.
 _pipeline_key_present = pipeline_key_present
 
+
 def configured_callbacks(config=None):
     """Load Visin only for configured pipelines; local runs need no Visin packages."""
     callbacks = []
@@ -48,6 +50,6 @@ def configured_callbacks(config=None):
         try:
             from visin_fusion.integrations.callback import VisinCallback
         except ImportError as exc:
-            raise ImportError('A Visin pipeline key is set; pip install visin-fusion[visin]') from exc
+            raise ImportError("A Visin pipeline key is set; pip install visin-fusion[visin]") from exc
         callbacks.append(VisinCallback(config))
     return Events(callbacks)

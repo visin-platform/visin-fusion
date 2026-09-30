@@ -3,7 +3,8 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.9
     hooks:
-      - id: ruff  # the rules in ruff.toml
+      - id: ruff  # the rules in pyproject.toml
+      - id: ruff-format
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -19,7 +20,7 @@ repos:
         name: config reference matches the schema
         entry: python tools/make_config_reference.py --check
         language: system
-        files: ^(utils/config_schema\.py|tools/make_config_reference\.py|docs/reference/config\.md)$
+        files: ^(visin_fusion/config/config_schema\.py|tools/make_config_reference\.py|docs/reference/config\.md)$
         pass_filenames: false
       - id: unit-tests
         name: unit tests

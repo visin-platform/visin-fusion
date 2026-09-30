@@ -107,9 +107,7 @@ def render_entry(commits: list[Commit]) -> dict[str, list[str]]:
     for commit in commits:
         scope = f"**{commit.scope}:** " if commit.scope else ""
         if commit.breaking:
-            sections.setdefault("Breaking changes", []).append(
-                f"- {scope}{commit.breaking_note or commit.subject}"
-            )
+            sections.setdefault("Breaking changes", []).append(f"- {scope}{commit.breaking_note or commit.subject}")
         section = SECTIONS.get(commit.type)
         if section:
             sections.setdefault(section, []).append(f"- {scope}{commit.subject}")
@@ -155,7 +153,7 @@ def _merge(hand_written: str, generated: dict[str, list[str]]) -> str:
         loose.pop()
     parts = ["\n".join(loose)] if loose else []
     for name in order:
-        lines = [line for line in sections.get(name, [])]
+        lines = list(sections.get(name, []))
         while lines and not lines[-1].strip():
             lines.pop()
         if lines:
@@ -163,9 +161,7 @@ def _merge(hand_written: str, generated: dict[str, list[str]]) -> str:
     return "\n\n".join(parts)
 
 
-def update_changelog(
-    text: str, version: str, previous: str | None, generated: dict[str, list[str]], date: str
-) -> str:
+def update_changelog(text: str, version: str, previous: str | None, generated: dict[str, list[str]], date: str) -> str:
     before, unreleased, rest = _split_unreleased(text)
     body = _merge(unreleased, generated) or "No user-facing changes."
     entry = f"## [Unreleased]\n\n## [{version}] - {date}\n\n{body}\n\n"
@@ -183,7 +179,7 @@ def update_changelog(
 def release_notes(text: str, version: str) -> str:
     """One version's entry, for the GitHub release."""
     match = re.search(
-        rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)", text, re.M | re.S
+        rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)", text, re.MULTILINE | re.DOTALL
     )
     if not match:
         raise ValueError(f"no changelog entry for {version}")
@@ -219,9 +215,7 @@ def read_version() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("release_as", nargs="?", help="patch, minor, major or an exact version")
     parser.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     parser.add_argument("--notes", metavar="VERSION", help="print a version's changelog entry and exit")

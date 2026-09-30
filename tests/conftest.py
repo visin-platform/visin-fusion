@@ -1,4 +1,5 @@
 """Shared pytest options for the visin-fusion tests."""
+
 import pytest
 import torch
 
@@ -10,8 +11,8 @@ def pytest_addoption(parser):
         choices=["offline", "online", "disabled"],
         default="offline",
         help="How the e2e tests report to Visin: offline (default) keeps reports on disk and checks "
-             "them; online sends them with the VISIN_TOKEN from the environment or "
-             "a caller-owned .env/VISIN_ENV_FILE and reads them back; disabled reports nothing.",
+        "them; online sends them with the VISIN_TOKEN from the environment or "
+        "a caller-owned .env/VISIN_ENV_FILE and reads them back; disabled reports nothing.",
     )
     group.addoption(
         "--device",

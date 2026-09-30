@@ -26,7 +26,7 @@ visin-fusion run -c config.json
 
 Exported variables take precedence over the file. `VISIN_ENV_FILE` must point to an existing file;
 when it is set, that file takes precedence over the current directory's `.env`. The installed
-`visin_fusion` package and the legacy `integrations/` folder are never searched for secrets.
+`visin_fusion` package are never searched for secrets.
 `VISIN_URL` defaults to `https://vision-api.visin.eu`; set it for another deployment.
 
 For Docker Compose, `.env` beside `compose.yml` is the default `env_file`, or pass an
@@ -84,6 +84,6 @@ visin sync
 
 | Module | Holds |
 | --- | --- |
-| `visin_fusion/integrations/visin.py` | `start_training_run`, `attach_to_training`, `report_test_results`, `report_benchmark`, `parse_checkpoint_name` |
+| `visin_fusion/integrations/visin.py` | `start_training_run`, `attach_to_training`, `report_test_results`, `report_benchmark` |
 | `visin_fusion/engine/epoch_logger.py` | `log_epoch_results`: writes the local epoch log |
 | `visin_fusion/integrations/visualization_uploader.py` | `queue_visualizations` |

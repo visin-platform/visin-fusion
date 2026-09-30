@@ -28,10 +28,11 @@ found by replacing its ``camera`` folder with the ``lidar`` folder or an annotat
 the first of ``annotations`` is the default. Split file names are relative to the root.
 ``train_classes`` is the class merging the dataset suggests for training; a config can set its own.
 """
+
 import json
 import os
 
-MANIFEST = 'dataset.json'
+MANIFEST = "dataset.json"
 FORMAT = 1
 
 
@@ -42,7 +43,7 @@ def load_manifest(dataset_root):
         return None
     with open(path) as f:
         manifest = json.load(f)
-    if manifest.get('format') != FORMAT:
+    if manifest.get("format") != FORMAT:
         raise ValueError(f"{path}: unsupported manifest format {manifest.get('format')!r} (expected {FORMAT})")
     return manifest
 
@@ -52,8 +53,8 @@ def apply_manifest(config):
 
     Returns the config (changed in place). Keys already in the config are kept.
     """
-    dataset = config.get('Dataset', {})
-    root = dataset.get('dataset_root')
+    dataset = config.get("Dataset", {})
+    root = dataset.get("dataset_root")
     manifest = load_manifest(root) if root else None
     if manifest is None:
         return config
@@ -61,32 +62,32 @@ def apply_manifest(config):
     def in_root(name):
         return name if os.path.isabs(name) else os.path.join(root, name)
 
-    splits = manifest.get('splits', {})
+    splits = manifest.get("splits", {})
     defaults = {
-        'name': manifest.get('name'),
-        'dataset_classes': manifest.get('classes'),
-        'train_classes': manifest.get('train_classes'),
-        'layout': manifest.get('layout'),
-        'split_dir': root,
-        'train_split': in_root(splits['train']) if 'train' in splits else None,
-        'val_split': in_root(splits['val']) if 'val' in splits else None,
-        'test_splits': splits.get('test'),
-        'visualization_split': splits.get('visualization'),
-        'annotation_path': (manifest.get('annotations') or [None])[0],
+        "name": manifest.get("name"),
+        "dataset_classes": manifest.get("classes"),
+        "train_classes": manifest.get("train_classes"),
+        "layout": manifest.get("layout"),
+        "split_dir": root,
+        "train_split": in_root(splits["train"]) if "train" in splits else None,
+        "val_split": in_root(splits["val"]) if "val" in splits else None,
+        "test_splits": splits.get("test"),
+        "visualization_split": splits.get("visualization"),
+        "annotation_path": (manifest.get("annotations") or [None])[0],
     }
     for key, value in defaults.items():
         if value is not None:
             dataset.setdefault(key, value)
 
-    transforms = dataset.setdefault('transforms', {})
-    for key, value in (manifest.get('normalization') or {}).items():
+    transforms = dataset.setdefault("transforms", {})
+    for key, value in (manifest.get("normalization") or {}).items():
         transforms.setdefault(key, value)
 
-    annotations = manifest.get('annotations')
-    if annotations and dataset.get('annotation_path') not in annotations:
+    annotations = manifest.get("annotations")
+    if annotations and dataset.get("annotation_path") not in annotations:
         raise ValueError(
             f"Dataset.annotation_path {dataset.get('annotation_path')!r} is not one of the annotations "
             f"of {os.path.join(root, MANIFEST)}: {annotations}"
         )
-    config['Dataset'] = dataset
+    config["Dataset"] = dataset
     return config

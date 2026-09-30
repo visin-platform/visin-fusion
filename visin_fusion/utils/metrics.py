@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-'''
+"""
 Model evaluation metrics Python scripts
 
 Created on June 18th, 2021
-'''
+"""
+
 import numpy as np
 import torch
 
+
 def find_overlap_exclude_bg_ignore(n_classes, output, anno):
     """
-    Correct IoU calculation that excludes background class (0) 
+    Correct IoU calculation that excludes background class (0)
     WITHOUT modifying predictions based on ground truth.
 
     :param n_classes: Total number of classes (including background)
@@ -28,20 +29,11 @@ def find_overlap_exclude_bg_ignore(n_classes, output, anno):
     num_eval_classes = n_classes - 1
 
     # Histogram for classes 1..n_classes-1
-    area_overlap = torch.histc(overlap.float(),
-                               bins=num_eval_classes,
-                               min=0.5,
-                               max=n_classes - 0.5)
+    area_overlap = torch.histc(overlap.float(), bins=num_eval_classes, min=0.5, max=n_classes - 0.5)
 
-    area_pred = torch.histc(pred_indices.float(),
-                            bins=num_eval_classes,
-                            min=0.5,
-                            max=n_classes - 0.5)
+    area_pred = torch.histc(pred_indices.float(), bins=num_eval_classes, min=0.5, max=n_classes - 0.5)
 
-    area_label = torch.histc(anno.float(),
-                             bins=num_eval_classes,
-                             min=0.5,
-                             max=n_classes - 0.5)
+    area_label = torch.histc(anno.float(), bins=num_eval_classes, min=0.5, max=n_classes - 0.5)
 
     # Union = TP + FP + FN
     area_union = area_pred + area_label - area_overlap
@@ -52,6 +44,7 @@ def find_overlap_exclude_bg_ignore(n_classes, output, anno):
 
 # Average precision, shared by every model's test script so all models are scored the same way.
 # AP is computed over every stored pixel (no sampling), so it is deterministic.
+
 
 def store_predictions_for_ap(output_seg, anno, all_predictions, all_targets, eval_classes, eval_indices):
     """Store pixel-wise class probabilities and targets for AP, on the CPU.

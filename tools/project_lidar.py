@@ -20,23 +20,22 @@ lands on it, mapped linearly from --x-range, --y-range, --z-range (metres) onto 
 
 The existing datasets were encoded differently (per-image scaling), see docs/datasets.md.
 """
+
 import argparse
 import json
 import os
-import sys
 
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.helpers import replace_camera_folder  # noqa: E402
+from visin_fusion.utils.helpers import replace_camera_folder
 
 
 def load_points(path):
     """Points as an (N, 3) float array: .npy with x, y, z first, or KITTI-style float32 .bin (x, y, z, i)."""
-    if path.endswith('.npy'):
+    if path.endswith(".npy"):
         points = np.load(path)
-    elif path.endswith('.bin'):
+    elif path.endswith(".bin"):
         points = np.fromfile(path, dtype=np.float32).reshape(-1, 4)
     else:
         raise ValueError(f"unsupported point cloud file {path} (use .npy or .bin)")
@@ -74,15 +73,17 @@ def scaled_intrinsics(K, from_size, to_size):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--root', required=True, help='dataset root')
-    parser.add_argument('--calibration', required=True, help='calibration.json (see above)')
-    parser.add_argument('--points', default='lidar_points', help='point cloud folder beside camera/ (default: lidar_points)')
-    parser.add_argument('--output', default='lidar_png', help='output folder beside camera/ (default: lidar_png)')
-    parser.add_argument('--frames', default='all.txt', help='split file listing the frames (default: all.txt)')
-    parser.add_argument('--x-range', type=float, nargs=2, default=[-40, 40], metavar=('LOW', 'HIGH'))
-    parser.add_argument('--y-range', type=float, nargs=2, default=[-5, 5], metavar=('LOW', 'HIGH'))
-    parser.add_argument('--z-range', type=float, nargs=2, default=[0, 80], metavar=('LOW', 'HIGH'))
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--root", required=True, help="dataset root")
+    parser.add_argument("--calibration", required=True, help="calibration.json (see above)")
+    parser.add_argument(
+        "--points", default="lidar_points", help="point cloud folder beside camera/ (default: lidar_points)"
+    )
+    parser.add_argument("--output", default="lidar_png", help="output folder beside camera/ (default: lidar_png)")
+    parser.add_argument("--frames", default="all.txt", help="split file listing the frames (default: all.txt)")
+    parser.add_argument("--x-range", type=float, nargs=2, default=[-40, 40], metavar=("LOW", "HIGH"))
+    parser.add_argument("--y-range", type=float, nargs=2, default=[-5, 5], metavar=("LOW", "HIGH"))
+    parser.add_argument("--z-range", type=float, nargs=2, default=[0, 80], metavar=("LOW", "HIGH"))
     args = parser.parse_args()
 
     with open(args.calibration) as f:
@@ -95,13 +96,13 @@ def main():
     for frame in frames:
         cam_path = os.path.join(args.root, frame)
         stem = os.path.splitext(replace_camera_folder(cam_path, args.points))[0]
-        points_path = next((stem + ext for ext in ('.npy', '.bin') if os.path.exists(stem + ext)), None)
+        points_path = next((stem + ext for ext in (".npy", ".bin") if os.path.exists(stem + ext)), None)
         if points_path is None:
             missing += 1
             continue
         width, height = Image.open(cam_path).size
-        K = scaled_intrinsics(calibration['K'], (calibration['width'], calibration['height']), (width, height))
-        rows, cols, cam = project(load_points(points_path), K, calibration['T_cam_lidar'], width, height)
+        K = scaled_intrinsics(calibration["K"], (calibration["width"], calibration["height"]), (width, height))
+        rows, cols, cam = project(load_points(points_path), K, calibration["T_cam_lidar"], width, height)
         out = replace_camera_folder(cam_path, args.output)
         os.makedirs(os.path.dirname(out), exist_ok=True)
         Image.fromarray(encode(rows, cols, cam, width, height, ranges)).save(out)
@@ -109,5 +110,5 @@ def main():
     print(f"Wrote {written} LiDAR projections; {missing} frames had no point cloud")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

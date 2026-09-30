@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 MaskFormer-based fusion model for camera-lidar segmentation.
 
@@ -37,59 +36,60 @@ codebase.
 
 import math
 
+import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import timm
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Loss helpers — faithful to facebookresearch/MaskFormer criterion.py
 # (Cheng et al., "Per-Pixel Classification is Not All You Need", NeurIPS 2021)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _sigmoid_focal_loss(inputs: torch.Tensor,
-                        targets: torch.Tensor,
-                        num_masks: float,
-                        alpha: float = 0.25,
-                        gamma: float = 2.0) -> torch.Tensor:
+
+def _sigmoid_focal_loss(
+    inputs: torch.Tensor, targets: torch.Tensor, num_masks: float, alpha: float = 0.25, gamma: float = 2.0
+) -> torch.Tensor:
     """Sigmoid focal loss normalised by num_masks."""
-    prob    = inputs.sigmoid()
-    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-    p_t     = prob * targets + (1.0 - prob) * (1.0 - targets)
-    loss    = ce_loss * ((1.0 - p_t) ** gamma)
+    prob = inputs.sigmoid()
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = prob * targets + (1.0 - prob) * (1.0 - targets)
+    loss = ce_loss * ((1.0 - p_t) ** gamma)
     alpha_t = alpha * targets + (1.0 - alpha) * (1.0 - targets)
     return (alpha_t * loss).mean(1).sum() / num_masks
 
 
-def _dice_loss(inputs: torch.Tensor,
-               targets: torch.Tensor,
-               num_masks: float) -> torch.Tensor:
+def _dice_loss(inputs: torch.Tensor, targets: torch.Tensor, num_masks: float) -> torch.Tensor:
     """Dice loss normalised by num_masks."""
-    p   = inputs.sigmoid().flatten(1)
-    t   = targets.flatten(1)
+    p = inputs.sigmoid().flatten(1)
+    t = targets.flatten(1)
     num = 2.0 * (p * t).sum(-1)
     den = p.sum(-1) + t.sum(-1)
     return (1.0 - (num + 1.0) / (den + 1.0)).sum() / num_masks
 
 
 @torch.no_grad()
-def _batch_focal_cost(pred_flat: torch.Tensor,
-                      gt_flat:   torch.Tensor,
-                      alpha: float = 0.25,
-                      gamma: float = 2.0) -> torch.Tensor:
+def _batch_focal_cost(
+    pred_flat: torch.Tensor, gt_flat: torch.Tensor, alpha: float = 0.25, gamma: float = 2.0
+) -> torch.Tensor:
     """Vectorised focal-loss cost matrix [Q, M] for Hungarian matching.
 
     pred_flat : [Q, HW]  raw logits
     gt_flat   : [M, HW]  binary float masks
     """
     prob = pred_flat.sigmoid()
-    fp   = alpha * ((1.0 - prob) ** gamma) * F.binary_cross_entropy_with_logits(
-               pred_flat, torch.ones_like(pred_flat), reduction='none')   # [Q, HW]
-    fn   = (1.0 - alpha) * (prob ** gamma) * F.binary_cross_entropy_with_logits(
-               pred_flat, torch.zeros_like(pred_flat), reduction='none')  # [Q, HW]
-    hw   = pred_flat.shape[1]
-    return (torch.einsum('qn,mn->qm', fp, gt_flat) +
-            torch.einsum('qn,mn->qm', fn, 1.0 - gt_flat)) / hw
+    fp = (
+        alpha
+        * ((1.0 - prob) ** gamma)
+        * F.binary_cross_entropy_with_logits(pred_flat, torch.ones_like(pred_flat), reduction="none")
+    )  # [Q, HW]
+    fn = (
+        (1.0 - alpha)
+        * (prob**gamma)
+        * F.binary_cross_entropy_with_logits(pred_flat, torch.zeros_like(pred_flat), reduction="none")
+    )  # [Q, HW]
+    hw = pred_flat.shape[1]
+    return (torch.einsum("qn,mn->qm", fp, gt_flat) + torch.einsum("qn,mn->qm", fn, 1.0 - gt_flat)) / hw
 
 
 class ResidualConvUnit(nn.Module):
@@ -99,7 +99,7 @@ class ResidualConvUnit(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(features, features, 3, padding=1, bias=True)
         self.conv2 = nn.Conv2d(features, features, 3, padding=1, bias=True)
-        self.relu  = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.relu(x)
@@ -121,9 +121,7 @@ class PixelDecoder(nn.Module):
         super().__init__()
 
         # 1×1 lateral projections for each scale
-        self.lateral_convs = nn.ModuleList(
-            [nn.Conv2d(c, out_channels, 1) for c in in_channels_list]
-        )
+        self.lateral_convs = nn.ModuleList([nn.Conv2d(c, out_channels, 1) for c in in_channels_list])
         # Output refinement
         self.output_conv = nn.Sequential(
             nn.Conv2d(out_channels, out_channels, 3, padding=1),
@@ -143,8 +141,7 @@ class PixelDecoder(nn.Module):
         # Top-down path: start from coarsest, upsample and add
         out = laterals[-1]
         for lateral in reversed(laterals[:-1]):
-            out = F.interpolate(out, size=lateral.shape[2:],
-                                mode='bilinear', align_corners=False)
+            out = F.interpolate(out, size=lateral.shape[2:], mode="bilinear", align_corners=False)
             out = out + lateral
 
         return self.output_conv(out)
@@ -163,12 +160,9 @@ class TransformerDecoder(nn.Module):
     embedding and every pixel's feature vector, following the original paper.
     """
 
-    def __init__(self,
-                 d_model: int = 256,
-                 nhead: int = 8,
-                 num_layers: int = 6,
-                 num_queries: int = 100,
-                 num_classes: int = 4):
+    def __init__(
+        self, d_model: int = 256, nhead: int = 8, num_layers: int = 6, num_queries: int = 100, num_classes: int = 4
+    ):
         super().__init__()
         self.d_model = d_model
         self.num_queries = num_queries
@@ -182,8 +176,7 @@ class TransformerDecoder(nn.Module):
         # cannot learn WHERE to attend, so masks stay unlocalized.
         # Sized for the coarsest expected feature map (backbone/4 = 64 for
         # a 256-input swin), but dynamically interpolated at forward time.
-        self.pos_embed = nn.Parameter(
-            torch.zeros(1, d_model, 64, 64))
+        self.pos_embed = nn.Parameter(torch.zeros(1, d_model, 64, 64))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         # Standard PyTorch transformer decoder.
@@ -192,9 +185,7 @@ class TransformerDecoder(nn.Module):
         # suppression but is evaluated deterministically, which consistently
         # inflates background query contributions at inference and collapses mIoU.
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=nhead,
-            dim_feedforward=d_model * 4,
-            dropout=0.0, batch_first=True
+            d_model=d_model, nhead=nhead, dim_feedforward=d_model * 4, dropout=0.0, batch_first=True
         )
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
 
@@ -220,8 +211,7 @@ class TransformerDecoder(nn.Module):
         b, c, h, w = pixel_features.shape
 
         # Add 2-D positional encoding (interpolated to actual feature map size)
-        pos = F.interpolate(self.pos_embed, size=(h, w),
-                            mode='bilinear', align_corners=False)  # [1, C, h, w]
+        pos = F.interpolate(self.pos_embed, size=(h, w), mode="bilinear", align_corners=False)  # [1, C, h, w]
         memory_with_pos = (pixel_features + pos).flatten(2).permute(0, 2, 1)  # [B, H*W, C]
 
         # Broadcast queries over the batch
@@ -231,16 +221,15 @@ class TransformerDecoder(nn.Module):
         # auxiliary losses (deep supervision) — identical to the official
         # MaskFormer TransformerPredictor with deep_supervision=True.
         all_class_logits: list[torch.Tensor] = []
-        all_masks:        list[torch.Tensor] = []
+        all_masks: list[torch.Tensor] = []
 
         for layer in self.decoder.layers:
             q = layer(q, memory_with_pos)
 
             # Per-query class logits and mask dot-product for this layer
-            cl = self.class_embed(q)                                         # [B, Q, C+1]
-            mf = self.mask_embed(q)                                          # [B, Q, C]
-            m  = torch.einsum('bqc,bchw->bqhw', mf,
-                              pixel_features) / math.sqrt(self.d_model)      # [B, Q, h, w]
+            cl = self.class_embed(q)  # [B, Q, C+1]
+            mf = self.mask_embed(q)  # [B, Q, C]
+            m = torch.einsum("bqc,bchw->bqhw", mf, pixel_features) / math.sqrt(self.d_model)  # [B, Q, h, w]
             all_class_logits.append(cl)
             all_masks.append(m)
 
@@ -269,24 +258,26 @@ class MaskFormerCriterion(nn.Module):
       eos_coef (no-object weight in class CE) = 0.1
     """
 
-    def __init__(self,
-                 num_classes: int,
-                 cost_class: float = 1.0,
-                 cost_mask: float = 20.0,   # paper §A.2: λ_bce=20 in cost matrix
-                 cost_dice: float = 1.0,    # paper §A.2: λ_dice=1 in cost matrix
-                 weight_class: float = 2.0,
-                 weight_mask: float = 5.0,
-                 weight_dice: float = 5.0,
-                 no_object_coef: float = 0.1,
-                 class_weights: torch.Tensor | None = None):
+    def __init__(
+        self,
+        num_classes: int,
+        cost_class: float = 1.0,
+        cost_mask: float = 20.0,  # paper §A.2: λ_bce=20 in cost matrix
+        cost_dice: float = 1.0,  # paper §A.2: λ_dice=1 in cost matrix
+        weight_class: float = 2.0,
+        weight_mask: float = 5.0,
+        weight_dice: float = 5.0,
+        no_object_coef: float = 0.1,
+        class_weights: torch.Tensor | None = None,
+    ):
         super().__init__()
-        self.num_classes    = num_classes
-        self.cost_class     = cost_class
-        self.cost_mask      = cost_mask
-        self.cost_dice      = cost_dice
-        self.weight_class   = weight_class
-        self.weight_mask    = weight_mask
-        self.weight_dice    = weight_dice
+        self.num_classes = num_classes
+        self.cost_class = cost_class
+        self.cost_mask = cost_mask
+        self.cost_dice = cost_dice
+        self.weight_class = weight_class
+        self.weight_mask = weight_mask
+        self.weight_dice = weight_dice
         self.no_object_coef = no_object_coef
 
         # CE weight tensor: [class_0_w, …, class_{C-1}_w, no_object_w]
@@ -296,14 +287,13 @@ class MaskFormerCriterion(nn.Module):
         # scalar.  Always build this vector so the paper's semantics are matched
         # even when no per-class weights are supplied.
         if class_weights is not None:
-            eos = torch.cat([class_weights,
-                             class_weights.new_tensor([no_object_coef])])
+            eos = torch.cat([class_weights, class_weights.new_tensor([no_object_coef])])
         else:
             # Foreground classes all weight 1; no-object class weighted by eos_coef
             eos = torch.ones(num_classes + 1)
             eos[-1] = no_object_coef
         # register_buffer so it moves with .to(device) but is not a parameter
-        self.register_buffer('ce_weight', eos)
+        self.register_buffer("ce_weight", eos)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -322,54 +312,50 @@ class MaskFormerCriterion(nn.Module):
         the background region, giving channel 0 a proper positive signal.
         """
         segments = []
-        for c in range(self.num_classes):   # include class 0 (background)
+        for c in range(self.num_classes):  # include class 0 (background)
             mask = (anno_b == c).float()
             if mask.sum() > 0:
                 segments.append((c, mask))
         return segments
 
     @torch.no_grad()
-    def _cost_matrix(self,
-                     cls_logits_q: torch.Tensor,   # [Q, C+1]
-                     pred_masks_q: torch.Tensor,   # [Q, h, w]
-                     gt_classes:   list[int],
-                     gt_masks:     torch.Tensor,   # [M, h, w]
-                     ) -> torch.Tensor:             # [Q, M]
-        Q = cls_logits_q.shape[0]
-        M = len(gt_classes)
+    def _cost_matrix(
+        self,
+        cls_logits_q: torch.Tensor,  # [Q, C+1]
+        pred_masks_q: torch.Tensor,  # [Q, h, w]
+        gt_classes: list[int],
+        gt_masks: torch.Tensor,  # [M, h, w]
+    ) -> torch.Tensor:  # [Q, M]
         dev = cls_logits_q.device
 
         # ── Class cost: −p(gt_class) ──────────────────────────────────────────
-        cls_probs   = F.softmax(cls_logits_q, dim=-1)          # [Q, C+1]
-        gt_idx      = torch.tensor(gt_classes, device=dev)     # [M]
-        class_cost  = -cls_probs[:, gt_idx]                    # [Q, M]
+        cls_probs = F.softmax(cls_logits_q, dim=-1)  # [Q, C+1]
+        gt_idx = torch.tensor(gt_classes, device=dev)  # [M]
+        class_cost = -cls_probs[:, gt_idx]  # [Q, M]
 
         # ── Mask costs (vectorised Q×M) ───────────────────────────────────────
-        pred_flat = pred_masks_q.flatten(1)       # [Q, HW]
-        pred_sig  = pred_flat.sigmoid()           # [Q, HW]
-        gt_flat   = gt_masks.flatten(1)           # [M, HW]
-        HW        = pred_flat.shape[1]
+        pred_flat = pred_masks_q.flatten(1)  # [Q, HW]
+        pred_sig = pred_flat.sigmoid()  # [Q, HW]
+        gt_flat = gt_masks.flatten(1)  # [M, HW]
 
         # Mask cost: sigmoid focal loss — matches official HungarianMatcher
         # (facebookresearch/MaskFormer matcher.py: batch_sigmoid_focal_loss)
-        focal_cost = _batch_focal_cost(pred_flat, gt_flat)             # [Q, M]
+        focal_cost = _batch_focal_cost(pred_flat, gt_flat)  # [Q, M]
 
         # Dice cost
-        num       = 2 * torch.einsum('qn,mn->qm', pred_sig, gt_flat)  # [Q, M]
-        den       = pred_sig.sum(-1, keepdim=True) + gt_flat.sum(-1).unsqueeze(0) + 1e-5
-        dice_cost = 1.0 - num / den                                    # [Q, M]
+        num = 2 * torch.einsum("qn,mn->qm", pred_sig, gt_flat)  # [Q, M]
+        den = pred_sig.sum(-1, keepdim=True) + gt_flat.sum(-1).unsqueeze(0) + 1e-5
+        dice_cost = 1.0 - num / den  # [Q, M]
 
-        return (self.cost_class * class_cost
-                + self.cost_mask  * focal_cost
-                + self.cost_dice  * dice_cost)
+        return self.cost_class * class_cost + self.cost_mask * focal_cost + self.cost_dice * dice_cost
 
     # ── Forward ───────────────────────────────────────────────────────────────
 
     def _loss_single_output(
         self,
-        class_logits: torch.Tensor,   # [B, Q, C+1]
-        pred_masks:   torch.Tensor,   # [B, Q, h, w]
-        anno_down:    torch.Tensor,   # [B, h, w]  long  (already downsampled)
+        class_logits: torch.Tensor,  # [B, Q, C+1]
+        pred_masks: torch.Tensor,  # [B, Q, h, w]
+        anno_down: torch.Tensor,  # [B, h, w]  long  (already downsampled)
     ) -> torch.Tensor:
         """Compute Hungarian-matching loss for one set of predictions.
 
@@ -380,7 +366,7 @@ class MaskFormerCriterion(nn.Module):
         dev = class_logits.device
         no_obj_idx = torch.tensor([self.num_classes], dtype=torch.long, device=dev)
 
-        total_loss  = class_logits.new_tensor(0.0)
+        total_loss = class_logits.new_tensor(0.0)
         num_matched = 0  # total matched GT segments across batch (for mask normalisation)
 
         # Collect matched-pair mask tensors for batch-normalised focal+dice
@@ -393,37 +379,37 @@ class MaskFormerCriterion(nn.Module):
             if not segments:
                 # Degenerate: push all queries to no-object
                 total_loss = total_loss + F.cross_entropy(
-                    class_logits[b], no_obj_idx.expand(Q),
+                    class_logits[b],
+                    no_obj_idx.expand(Q),
                     weight=self.ce_weight,
                 )
                 continue
 
             gt_classes = [s[0] for s in segments]
-            gt_masks   = torch.stack([s[1] for s in segments]).to(dev)  # [M, h, w]
+            gt_masks = torch.stack([s[1] for s in segments]).to(dev)  # [M, h, w]
 
             # ── Hungarian matching ────────────────────────────────────────────
-            cost = self._cost_matrix(
-                class_logits[b], pred_masks[b], gt_classes, gt_masks)
+            cost = self._cost_matrix(class_logits[b], pred_masks[b], gt_classes, gt_masks)
             from scipy.optimize import linear_sum_assignment
-            row_ind, col_ind = linear_sum_assignment(
-                cost.cpu().detach().numpy())
-            matched = set(row_ind.tolist())
+
+            row_ind, col_ind = linear_sum_assignment(cost.cpu().detach().numpy())
             num_matched += len(row_ind)
 
             # ── Classification loss (official: single CE over all queries) ────
             # Build a target-class vector: matched → GT class, rest → no-object.
-            tgt_classes = torch.full((Q,), self.num_classes,
-                                     dtype=torch.long, device=dev)
+            tgt_classes = torch.full((Q,), self.num_classes, dtype=torch.long, device=dev)
             for r, c in zip(row_ind, col_ind):
                 tgt_classes[r] = gt_classes[c]
             total_loss = total_loss + self.weight_class * F.cross_entropy(
-                class_logits[b], tgt_classes, weight=self.ce_weight,
+                class_logits[b],
+                tgt_classes,
+                weight=self.ce_weight,
             )
 
             # ── Collect matched mask pairs (focal + dice computed below) ──────
             for r, c in zip(row_ind, col_ind):
                 all_pm.append(pred_masks[b, r].flatten().unsqueeze(0))  # [1, HW]
-                all_gm.append(gt_masks[c].flatten().unsqueeze(0))       # [1, HW]
+                all_gm.append(gt_masks[c].flatten().unsqueeze(0))  # [1, HW]
 
         # ── Mask losses: sigmoid focal + dice, normalised by num_matched ──────
         # Matches facebookresearch/MaskFormer criterion.py loss_masks():
@@ -433,19 +419,18 @@ class MaskFormerCriterion(nn.Module):
             n = float(max(1, num_matched))
             pm_cat = torch.cat(all_pm, dim=0)  # [num_matched, HW]
             gm_cat = torch.cat(all_gm, dim=0)  # [num_matched, HW]
-            total_loss = total_loss + self.weight_mask * _sigmoid_focal_loss(
-                pm_cat, gm_cat, n)
-            total_loss = total_loss + self.weight_dice * _dice_loss(
-                pm_cat, gm_cat, n)
+            total_loss = total_loss + self.weight_mask * _sigmoid_focal_loss(pm_cat, gm_cat, n)
+            total_loss = total_loss + self.weight_dice * _dice_loss(pm_cat, gm_cat, n)
 
         return total_loss / B
 
-    def forward(self,
-                class_logits: torch.Tensor,            # [B, Q, C+1]
-                pred_masks:   torch.Tensor,            # [B, Q, h, w]
-                anno:         torch.Tensor,            # [B, H, W]  long
-                aux_outputs:  list | None = None,      # [(cls, mask), ...] auxiliary layers
-                ) -> torch.Tensor:
+    def forward(
+        self,
+        class_logits: torch.Tensor,  # [B, Q, C+1]
+        pred_masks: torch.Tensor,  # [B, Q, h, w]
+        anno: torch.Tensor,  # [B, H, W]  long
+        aux_outputs: list | None = None,  # [(cls, mask), ...] auxiliary layers
+    ) -> torch.Tensor:
         """Compute total loss: final-layer loss + auxiliary-layer losses.
 
         aux_outputs is a list of (class_logits, masks) from intermediate
@@ -455,9 +440,7 @@ class MaskFormerCriterion(nn.Module):
         _, _, h, w = pred_masks.shape
 
         # Downsample annotation once to pixel-decoder resolution
-        anno_down = F.interpolate(
-            anno.float().unsqueeze(1), size=(h, w), mode='nearest'
-        ).long().squeeze(1)  # [B, h, w]
+        anno_down = F.interpolate(anno.float().unsqueeze(1), size=(h, w), mode="nearest").long().squeeze(1)  # [B, h, w]
 
         # Final-layer loss
         total_loss = self._loss_single_output(class_logits, pred_masks, anno_down)
@@ -469,13 +452,10 @@ class MaskFormerCriterion(nn.Module):
                 # Aux masks may be at a different spatial resolution; re-downsample
                 _, _, ah, aw = aux_mask.shape
                 if (ah, aw) != (h, w):
-                    ad = F.interpolate(
-                        anno.float().unsqueeze(1), size=(ah, aw), mode='nearest'
-                    ).long().squeeze(1)
+                    ad = F.interpolate(anno.float().unsqueeze(1), size=(ah, aw), mode="nearest").long().squeeze(1)
                 else:
                     ad = anno_down
-                total_loss = total_loss + self._loss_single_output(
-                    aux_cls, aux_mask, ad)
+                total_loss = total_loss + self._loss_single_output(aux_cls, aux_mask, ad)
 
         return total_loss
 
@@ -496,31 +476,29 @@ class MaskFormerFusion(nn.Module):
         segmap[:, c, :, :] = Σ_q  softmax(class_logits_q)[c] · sigmoid(mask_q)
     """
 
-    def __init__(self,
-                 backbone: str = 'swin_base_patch4_window7_224',
-                 num_classes: int = 4,
-                 pixel_decoder_channels: int = 256,
-                 transformer_d_model: int = 256,
-                 num_queries: int = 100,
-                 pretrained: bool = True):
+    def __init__(
+        self,
+        backbone: str = "swin_base_patch4_window7_224",
+        num_classes: int = 4,
+        pixel_decoder_channels: int = 256,
+        transformer_d_model: int = 256,
+        num_queries: int = 100,
+        pretrained: bool = True,
+    ):
         super().__init__()
 
         self.num_classes = num_classes
 
         # ── Backbone ──────────────────────────────────────────────────────────
-        self.backbone = timm.create_model(
-            backbone, pretrained=pretrained, features_only=True
-        )
+        self.backbone = timm.create_model(backbone, pretrained=pretrained, features_only=True)
         bb_channels = self.backbone.feature_info.channels()
 
         # ── Residual fusion units (residual_average strategy) ─────────────────
         # One ResidualConvUnit per backbone scale, per modality stream.
         # Mirrors the design in clftv2.py:
         #   fused_i = res_rgb_i(feat_rgb_i) + res_lidar_i(feat_lidar_i) + prev
-        self.fusion_res_rgb   = nn.ModuleList(
-            [ResidualConvUnit(c) for c in bb_channels])
-        self.fusion_res_lidar = nn.ModuleList(
-            [ResidualConvUnit(c) for c in bb_channels])
+        self.fusion_res_rgb = nn.ModuleList([ResidualConvUnit(c) for c in bb_channels])
+        self.fusion_res_lidar = nn.ModuleList([ResidualConvUnit(c) for c in bb_channels])
 
         # ── Pixel Decoder (FPN) ───────────────────────────────────────────────
         self.pixel_decoder = PixelDecoder(bb_channels, pixel_decoder_channels)
@@ -528,13 +506,14 @@ class MaskFormerFusion(nn.Module):
         # Project pixel decoder output to transformer d_model if sizes differ
         self.pixel_proj = (
             nn.Conv2d(pixel_decoder_channels, transformer_d_model, 1)
-            if pixel_decoder_channels != transformer_d_model else nn.Identity()
+            if pixel_decoder_channels != transformer_d_model
+            else nn.Identity()
         )
 
         # ── Transformer Decoder ───────────────────────────────────────────────
         self.transformer_decoder = TransformerDecoder(
             d_model=transformer_d_model,
-            nhead=8,   # matches MaskFormer paper (Cheng et al., NeurIPS 2021)
+            nhead=8,  # matches MaskFormer paper (Cheng et al., NeurIPS 2021)
             num_layers=6,
             num_queries=num_queries,
             num_classes=num_classes,
@@ -544,13 +523,11 @@ class MaskFormerFusion(nn.Module):
     @staticmethod
     def _to_bchw(f: torch.Tensor) -> torch.Tensor:
         """Normalise a backbone feature map to [B, C, H, W]."""
-        if f.ndim == 4 and f.shape[1] < f.shape[-1]:   # BHWC → BCHW
+        if f.ndim == 4 and f.shape[1] < f.shape[-1]:  # BHWC → BCHW
             return f.permute(0, 3, 1, 2).contiguous()
         return f
 
-    def _extract_features(self, rgb: torch.Tensor,
-                          lidar: torch.Tensor,
-                          modal: str) -> list[torch.Tensor]:
+    def _extract_features(self, rgb: torch.Tensor, lidar: torch.Tensor, modal: str) -> list[torch.Tensor]:
         """Run backbone and fuse with residual_average strategy.
 
         Applies a ResidualConvUnit to each stream at each backbone scale,
@@ -561,28 +538,23 @@ class MaskFormerFusion(nn.Module):
 
             fused_i = res_rgb_i(feat_rgb_i) + res_lidar_i(feat_lidar_i)
         """
-        if modal == 'rgb':
-            return [self.fusion_res_rgb[i](self._to_bchw(f))
-                    for i, f in enumerate(self.backbone(rgb))]
+        if modal == "rgb":
+            return [self.fusion_res_rgb[i](self._to_bchw(f)) for i, f in enumerate(self.backbone(rgb))]
 
-        elif modal == 'lidar':
-            return [self.fusion_res_lidar[i](self._to_bchw(f))
-                    for i, f in enumerate(self.backbone(lidar))]
+        if modal == "lidar":
+            return [self.fusion_res_lidar[i](self._to_bchw(f)) for i, f in enumerate(self.backbone(lidar))]
 
-        elif modal in ('fusion', 'cross_fusion'):
-            raw_rgb   = [self._to_bchw(f) for f in self.backbone(rgb)]
+        if modal in ("fusion", "cross_fusion"):
+            raw_rgb = [self._to_bchw(f) for f in self.backbone(rgb)]
             raw_lidar = [self._to_bchw(f) for f in self.backbone(lidar)]
             return [
                 self.fusion_res_rgb[i](fr) + self.fusion_res_lidar[i](fl)
                 for i, (fr, fl) in enumerate(zip(raw_rgb, raw_lidar))
             ]
 
-        else:
-            raise ValueError(f"Unknown modal: {modal!r}")
+        raise ValueError(f"Unknown modal: {modal!r}")
 
-    def forward(self, rgb: torch.Tensor,
-                lidar: torch.Tensor,
-                modal: str = 'fusion'):
+    def forward(self, rgb: torch.Tensor, lidar: torch.Tensor, modal: str = "fusion"):
         """
         Args:
             rgb   : [B, 3, H, W]
@@ -597,14 +569,14 @@ class MaskFormerFusion(nn.Module):
         features = self._extract_features(rgb, lidar, modal)
 
         # 2. FPN pixel decoder
-        pixel_features = self.pixel_decoder(features)          # [B, pd_ch, h, w]
-        pixel_features = self.pixel_proj(pixel_features)       # [B, d_model, h, w]
+        pixel_features = self.pixel_decoder(features)  # [B, pd_ch, h, w]
+        pixel_features = self.pixel_proj(pixel_features)  # [B, d_model, h, w]
 
         # 3. Transformer decoder → per-layer class logits + masks (all layers)
         all_class_logits, all_masks = self.transformer_decoder(pixel_features)
         # each element: class_logits [B, Q, C+1], masks [B, Q, h, w]
-        class_logits = all_class_logits[-1]   # final layer
-        masks        = all_masks[-1]
+        class_logits = all_class_logits[-1]  # final layer
+        masks = all_masks[-1]
         # Auxiliary outputs from intermediate layers (for deep supervision)
         aux_outputs = list(zip(all_class_logits[:-1], all_masks[:-1]))
 
@@ -618,12 +590,11 @@ class MaskFormerFusion(nn.Module):
         #   P(class_c) ≈ 1 and unmatched queries have P(no-obj) ≈ 1 so their
         #   P(class_c) ≈ 0, giving the same limiting behaviour without the extra
         #   multiplicative factor that deviates from the paper formula.
-        cls_probs  = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
-        mask_probs = masks.sigmoid()                                           # [B, Q, h, w]
-        segmap     = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
+        cls_probs = F.softmax(class_logits, dim=-1)[..., : self.num_classes]  # [B, Q, C]
+        mask_probs = masks.sigmoid()  # [B, Q, h, w]
+        segmap = torch.einsum("bqc,bqhw->bchw", cls_probs, mask_probs)  # [B, C, h, w]
 
         # 5. Upsample to original input resolution
-        segmap = F.interpolate(segmap, size=(H, W),
-                               mode='bilinear', align_corners=False)
+        segmap = F.interpolate(segmap, size=(H, W), mode="bilinear", align_corners=False)
 
         return None, segmap, class_logits, masks, aux_outputs

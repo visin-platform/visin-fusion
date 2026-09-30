@@ -3,7 +3,7 @@
 Generated from `visin_fusion/config/config_schema.py` by `tools/make_config_reference.py`; do not edit.
 Schema version: `2.0`. Export JSON Schema with `visin-fusion schema`.
 
-Unknown keys in these sections are errors. Model sections (`CLFT`, `CLFTv2`, `MaskFormer`, `Mask2Former`, `DeepLabV3Plus`) take the settings of their model; start from its preset in `configs/presets/`.
+Unknown keys in these sections are errors. Model sections (`CLFT`, `CLFTv2`, `MaskFormer`, `Mask2Former`, `DeepLabV3Plus`) take the settings of their model; start from its preset in `visin_fusion/config/presets/`.
 
 | `CLI.backbone` | Model section | Modes |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ The data, and the classes to learn. With a `dataset.json` at `dataset_root`, mos
 | `dataset_root` | str | **required** | Frames in the split files are relative to this; may use environment variables, e.g. "$DATA_ROOT/zod" |
 | `train_split` | str | **required** |  |
 | `val_split` | str | **required** |  |
-| `split_dir` | str (optional) |  | Where test and visualization splits are (utils/splits.py) |
+| `split_dir` | str (optional) |  | Where test and visualization splits are (visin_fusion/config/splits.py) |
 | `test_splits` | dict of str, str (optional) |  | Test sets: name -> split file |
 | `visualization_split` | str (optional) |  |  |
 | `annotation_path` | str (optional) |  | Annotation folder that replaces a frame's camera folder |

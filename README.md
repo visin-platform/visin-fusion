@@ -53,7 +53,7 @@ visin-fusion run -c configs/quickstart.json
 ```
 
 The [pipeline guide](docs/running.md) covers configs, Docker, SLURM and individual stages. Add
-`.[train,visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](integrations/README.md).
+`.[train,visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](docs/visin.md).
 
 ## Tests
 

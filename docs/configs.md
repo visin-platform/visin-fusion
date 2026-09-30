@@ -15,9 +15,9 @@ preset and set what is yours.
 
 ## How a config is resolved
 
-Every stage and `run.py` load a config the same way (`utils/config.py`):
+Every stage and `visin-fusion run` load a config the same way (`visin_fusion/config/config.py`):
 
-1. **`extends`**: the preset (`configs/presets/<name>.json`) or file (`"./base.json"`, relative to the
+1. **`extends`**: the preset (`visin_fusion/config/presets/<name>.json`) or file (`"./base.json"`, relative to the
    config) it names is loaded first, and the config's own keys are merged over it: dictionaries key by
    key, everything else replaced. A file it extends may extend another.
 2. **Paths**: `Dataset.dataset_root` may use environment variables and `~`, e.g. `"$DATA_ROOT/zod"`,

@@ -1,55 +1,64 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Model builder for creating and loading CLFT models.
 """
+
+import logging
+
 import torch
+
 from visin_fusion.models.clft.clft import CLFT
+
+logger = logging.getLogger(__name__)
 
 
 class ModelBuilder:
     """Handles model creation and checkpoint loading."""
-    
+
     def __init__(self, config, device):
         self.config = config
         self.device = device
         self.num_unique_classes = self._calculate_unique_classes()
-    
+
     def _calculate_unique_classes(self):
         """Calculate number of training classes."""
-        return len(self.config['Dataset']['train_classes'])
-    
+        return len(self.config["Dataset"]["train_classes"])
+
     def build_model(self):
         """Build model based on configuration."""
 
-        resize = self.config['Dataset']['transforms']['resize']
-        pretrained = self.config['CLFT'].get('pretrained', True)
-        
+        resize = self.config["Dataset"]["transforms"]["resize"]
+        pretrained = self.config["CLFT"].get("pretrained", True)
+
         model = CLFT(
             RGB_tensor_size=(3, resize, resize),
             XYZ_tensor_size=(3, resize, resize),
-            patch_size=self.config['CLFT']['patch_size'],
-            emb_dim=self.config['CLFT']['emb_dim'],
-            resample_dim=self.config['CLFT']['resample_dim'],
-            read=self.config['CLFT']['read'],
-            hooks=self.config['CLFT']['hooks'],
-            reassemble_s=self.config['CLFT']['reassembles'],
+            patch_size=self.config["CLFT"]["patch_size"],
+            emb_dim=self.config["CLFT"]["emb_dim"],
+            resample_dim=self.config["CLFT"]["resample_dim"],
+            read=self.config["CLFT"]["read"],
+            hooks=self.config["CLFT"]["hooks"],
+            reassemble_s=self.config["CLFT"]["reassembles"],
             nclasses=self.num_unique_classes,
-            type=self.config['CLFT']['type'],
-            model_timm=self.config['CLFT']['model_timm'],
-            pretrained=pretrained
+            type=self.config["CLFT"]["type"],
+            model_timm=self.config["CLFT"]["model_timm"],
+            pretrained=pretrained,
         )
-        
-        print(f"Built {self.config['CLI']['backbone']} model with {self.num_unique_classes} classes (pretrained: {pretrained})")
+
+        logger.info(
+            "Built %s model with %s classes (pretrained: %s)",
+            self.config["CLI"]["backbone"],
+            self.num_unique_classes,
+            pretrained,
+        )
         return model
-    
+
     def load_checkpoint(self, model, checkpoint_path):
         """Load model weights from checkpoint."""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint["model_state_dict"])
         model.to(self.device)
-        
-        epoch = checkpoint.get('epoch', 0)
-        print(f"Loaded checkpoint from epoch {epoch}: {checkpoint_path}")
+
+        epoch = checkpoint.get("epoch", 0)
+        logger.info("Loaded checkpoint from epoch %s: %s", epoch, checkpoint_path)
         return model, epoch
-    

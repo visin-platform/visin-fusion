@@ -9,7 +9,7 @@ visin-fusion run -c <config.json> --upload                 # also upload visuali
 visin-fusion run -c <config.json> --benchmark-device cpu   # benchmark on one device only
 ```
 
-`run.py` checks the config first, then runs each stage as its own process and stops at the first that
+`visin-fusion run` checks the config first, then runs each stage as its own process and stops at the first that
 fails, with its exit code.
 
 ## One stage
@@ -41,8 +41,8 @@ reported twice: `gpu_memory_*` is what stays allocated after a pass (mostly the 
 `gpu_memory_peak_mb` the peak during the passes, activations included. A config that fails is named
 and makes the run exit non-zero; the others are still saved.
 
-Every stage is one implementation for every model (`stages/<stage>/common.py`), built on
-`models/registry.py`:
+Every stage is one implementation for every model (`visin_fusion/engine/stages/<stage>/common.py`), built on
+`visin_fusion/models/registry.py`:
 
 - **Train** builds the model and its training setup from the registry (optimizer, learning-rate
   schedule, loss, gradient clipping, mixed precision), trains `General.epochs` epochs on the train split
@@ -57,7 +57,7 @@ Every stage is one implementation for every model (`stages/<stage>/common.py`), 
   `<logdir>/visualizations/{segment,overlay,compare,correct_only}/`; `--upload` sends them to Visin.
 - **Benchmark** is described below.
 
-Each exits non-zero when anything fails, so `run.py` and the SLURM jobs stop.
+Each exits non-zero when anything fails, so `visin-fusion run` and the SLURM jobs stop.
 
 ## Docker
 
@@ -83,7 +83,7 @@ toolkit on the host. Images are published by `.github/workflows/image.yml` to
 
 ## SLURM
 
-`slurms/run.slurm` runs a config through `run.py` on a SLURM cluster, from the venv or, with `IMAGE` set,
+`slurms/run.slurm` runs a config through `visin-fusion run` on a SLURM cluster, from the venv or, with `IMAGE` set,
 from the published image through Apptainer. Submit from the repository root; adjust its `#SBATCH`
 resources to your cluster.
 

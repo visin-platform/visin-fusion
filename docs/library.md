@@ -20,7 +20,11 @@ Python 3.10+ is declared in `pyproject.toml`. The base install depends on PyTorc
 
 ```python
 from visin_fusion.models import (
-    CLFT, CLFTv2, MaskFormerFusion, Mask2FormerFusion, DeepLabV3Plus,
+    CLFT,
+    CLFTv2,
+    MaskFormerFusion,
+    Mask2FormerFusion,
+    DeepLabV3Plus,
 )
 ```
 
@@ -85,9 +89,7 @@ Save and load the public model's state dictionary as usual. The public wrapper p
 
 ```python
 torch.save({"model_state_dict": model.state_dict()}, "model.pth")
-restored = Mask2FormerFusion.from_pretrained(
-    "model.pth", num_classes=4, mode="cross_fusion"
-)
+restored = Mask2FormerFusion.from_pretrained("model.pth", num_classes=4, mode="cross_fusion")
 ```
 
 `from_pretrained` also accepts a name registered with `ModelClass.register_pretrained(name, URL)`. This release does **not** ship named pretrained weights; use a local checkpoint or register your own URL. Match the class, class count and architecture options when loading a checkpoint.
@@ -96,4 +98,4 @@ restored = Mask2FormerFusion.from_pretrained(
 
 The [CLI pipeline](running.md) supplies datasets, config validation, training, testing, visualization and benchmarking. Install `[train]`, then run `visin-fusion run -c config.json`. The optional `[visin]` extra adds Visin reporting and `visin:` dataset resolution. Credentials
 come from exported variables or an application-owned `.env`/`VISIN_ENV_FILE`; see the
-[Visin integration guide](https://github.com/visin-platform/visin-fusion/blob/main/integrations/README.md). See [Configs](configs.md) and [Datasets](datasets.md) for that route.
+[Visin integration guide](visin.md). See [Configs](configs.md) and [Datasets](datasets.md) for that route.

@@ -3,11 +3,15 @@
 Epoch logs and checkpoint names carry these IDs, so they are chosen the same way whether or not
 Visin is configured.
 """
+
 import glob
 import json
+import logging
 import os
 import re
 import uuid
+
+logger = logging.getLogger(__name__)
 
 _EPOCH_NS = uuid.uuid5(uuid.NAMESPACE_DNS, "epochs.visin")
 _CHECKPOINT_NAME = re.compile(r"epoch_(\d+)_([0-9a-fA-F-]{36})\.pth$")
@@ -68,7 +72,7 @@ def training_uuid_for_run(config):
         training_uuid = training_uuid_for_checkpoint(checkpoint) if checkpoint else None
         training_uuid = training_uuid or get_training_uuid_from_logs(config["Log"]["logdir"])[0]
         if not training_uuid:
-            print("No earlier run in the epoch logs; starting a new one")
+            logger.info("No earlier run in the epoch logs; starting a new one")
     if training_uuid is not None:
         return training_uuid, True
     return str(uuid.uuid4()), False

@@ -27,13 +27,15 @@ LiDAR Normalization (from existing code):
 - mean: [-0.17263354, 0.85321806, 24.5527253]
 - std: [7.34546552, 1.17227659, 15.83745082]
 """
+
 import os
 import pickle
-import numpy as np
 from pathlib import Path
+
+import cv2
+import numpy as np
 from PIL import Image
 from tqdm import tqdm
-import cv2
 
 
 class XODL2DProjector:
@@ -56,10 +58,10 @@ class XODL2DProjector:
         # fx/fy = 1260 * (768/1280) ≈ 1260 * 0.6 = 756
         # cx/cy = 960 * (1363/1920) ≈ 960 * 0.71 = 682, 540 * (768/1280) ≈ 540 * 0.6 = 324
         self.camera_intrinsics = {
-            'fx': 756.0,    # focal length x (scaled to match resized camera size)
-            'fy': 756.0,    # focal length y (scaled to match resized camera size)
-            'cx': 681.5,    # principal point x (scaled to match resized camera size)
-            'cy': 324.0,    # principal point y (scaled to match resized camera size)
+            "fx": 756.0,  # focal length x (scaled to match resized camera size)
+            "fy": 756.0,  # focal length y (scaled to match resized camera size)
+            "cx": 681.5,  # principal point x (scaled to match resized camera size)
+            "cy": 324.0,  # principal point y (scaled to match resized camera size)
         }
 
         # LiDAR normalization parameters (same as Waymo)
@@ -78,14 +80,14 @@ class XODL2DProjector:
             camera_coord_scaled: 2D camera coordinates (N, 2) - scaled to output space
             camera_coord_original: 2D camera coordinates (N, 2) - in original camera space
         """
-        with open(pickle_path, 'rb') as f:
+        with open(pickle_path, "rb") as f:
             lidar_data = pickle.load(f)
 
-        points3d = lidar_data['3d_points']
+        points3d = lidar_data["3d_points"]
 
         # Check if camera coordinates are available
-        if 'camera_coordinates' in lidar_data:
-            camera_coord = lidar_data['camera_coordinates']
+        if "camera_coordinates" in lidar_data:
+            camera_coord = lidar_data["camera_coordinates"]
             # XOD camera coordinates are stored as [camera_id, u, v]
             # Filter for front camera (camera 1, similar to Waymo)
             mask = camera_coord[:, 0] == 1
@@ -103,8 +105,7 @@ class XODL2DProjector:
 
             camera_coord_scaled = np.stack([u_output, v_output], axis=1)
             return points3d, camera_coord_scaled, camera_coord_original
-        else:
-            raise ValueError(f"No camera coordinates found in {pickle_path}")
+        raise ValueError(f"No camera coordinates found in {pickle_path}")
 
     def normalize_lidar_points(self, points3d):
         """
@@ -147,8 +148,7 @@ class XODL2DProjector:
         cols = np.floor(camera_coord[:, 0]).astype(int)
 
         # Filter valid coordinates
-        valid_mask = (rows >= 0) & (rows < self.output_height) & \
-                    (cols >= 0) & (cols < self.output_width)
+        valid_mask = (rows >= 0) & (rows < self.output_height) & (cols >= 0) & (cols < self.output_width)
 
         rows = rows[valid_mask]
         cols = cols[valid_mask]
@@ -170,16 +170,15 @@ class XODL2DProjector:
                 # Normalize to -1 to +1 range, then scale to 0-255
                 normalized = np.clip(channel / abs_max, -1, 1)
                 return ((normalized + 1) / 2 * 255).astype(np.uint8)
-            else:
-                return np.zeros_like(channel, dtype=np.uint8)
+            return np.zeros_like(channel, dtype=np.uint8)
 
         X_norm = robust_normalize(X)
         Y_norm = robust_normalize(Y)
         Z_norm = robust_normalize(Z)
 
-        X_img = Image.fromarray(X_norm, mode='L')
-        Y_img = Image.fromarray(Y_norm, mode='L')
-        Z_img = Image.fromarray(Z_norm, mode='L')
+        X_img = Image.fromarray(X_norm, mode="L")
+        Y_img = Image.fromarray(Y_norm, mode="L")
+        Z_img = Image.fromarray(Z_norm, mode="L")
 
         return X_img, Y_img, Z_img
 
@@ -196,14 +195,13 @@ class XODL2DProjector:
             alpha: Transparency alpha for LiDAR overlay (0-1)
         """
         # Load camera image
-        camera_img = Image.open(camera_path).convert('RGBA')
+        camera_img = Image.open(camera_path).convert("RGBA")
         camera_width, camera_height = camera_img.size
 
         # Calculate distances for each point
         distances = np.linalg.norm(points3d, axis=1)
 
         # Create distance-based image at camera resolution
-        distance_img = np.zeros((camera_height, camera_width), dtype=np.float32)
 
         # Use camera coordinates directly (they are already in camera space)
         rows = np.round(camera_coord[:, 1]).astype(int)  # v coordinates
@@ -246,7 +244,7 @@ class XODL2DProjector:
         lidar_colored_rgb = cv2.cvtColor(lidar_colored, cv2.COLOR_BGR2RGB)
 
         # Convert camera to numpy array for drawing (use RGB, not RGBA)
-        camera_array = np.array(camera_img.convert('RGB'))
+        camera_array = np.array(camera_img.convert("RGB"))
 
         # Get coordinates of LiDAR points
         point_coords = np.where(dist_img > 0)
@@ -283,7 +281,7 @@ class XODL2DProjector:
         combined_uint8 = (combined_array * 255).astype(np.uint8)
 
         # Create PIL Image
-        combined_img = Image.fromarray(combined_uint8, mode='RGB')
+        combined_img = Image.fromarray(combined_uint8, mode="RGB")
         combined_img.save(save_path)
 
     def process_pickle_file(self, pickle_path, output_dir, create_visualization=False, camera_path=None):
@@ -316,7 +314,9 @@ class XODL2DProjector:
         # Create overlay visualization if requested
         if create_visualization and camera_path and os.path.exists(camera_path):
             visualize_output_path = f"{output_base}_overlay.png"
-            self.create_overlay_visualization(camera_path, f"{output_base}.png", visualize_output_path, points3d, camera_coord_original)
+            self.create_overlay_visualization(
+                camera_path, f"{output_base}.png", visualize_output_path, points3d, camera_coord_original
+            )
 
     def process_directory(self, input_dir, create_visualization=False):
         """
@@ -329,17 +329,17 @@ class XODL2DProjector:
         input_path = Path(input_dir)
 
         # Check if pkl subdirectory exists
-        pkl_dir = input_path / 'pkl'
+        pkl_dir = input_path / "pkl"
         if not pkl_dir.exists():
             print(f"Error: {pkl_dir} does not exist")
             return
 
         # Create output directory
-        output_dir = input_path / 'lidar_png'
+        output_dir = input_path / "lidar_png"
         output_dir.mkdir(exist_ok=True)
 
         # Find all pickle files
-        pickle_files = list(pkl_dir.glob('*.pkl'))
+        pickle_files = list(pkl_dir.glob("*.pkl"))
         if not pickle_files:
             print(f"No pickle files found in {pkl_dir}")
             return
@@ -354,7 +354,7 @@ class XODL2DProjector:
                 # Find corresponding camera image for visualization
                 camera_path = None
                 if create_visualization:
-                    camera_file = input_path / 'rgb' / f"{pickle_file.stem}.png"
+                    camera_file = input_path / "rgb" / f"{pickle_file.stem}.png"
                     if camera_file.exists():
                         camera_path = str(camera_file)
 
@@ -368,9 +368,9 @@ class XODL2DProjector:
 
         print(f"Processing complete. Processed {processed_count}/{len(pickle_files)} files.")
 
-    def process_from_file_list(self, file_list_path, dataset_root='', output_root='', create_visualization=False):
+    def process_from_file_list(self, file_list_path, dataset_root="", output_root="", create_visualization=False):
         # Read file list
-        with open(file_list_path, 'r') as f:
+        with open(file_list_path) as f:
             camera_paths = [line.strip() for line in f if line.strip()]
 
         if not camera_paths:
@@ -382,7 +382,7 @@ class XODL2DProjector:
         # Infer dataset root
         if not dataset_root:
             file_list_path_obj = Path(file_list_path)
-            if 'all.txt' in str(file_list_path_obj):
+            if "all.txt" in str(file_list_path_obj):
                 dataset_root = str(file_list_path_obj.parent)
 
         print(f"Using dataset root: {dataset_root}")
@@ -399,16 +399,16 @@ class XODL2DProjector:
             full_cam_path = os.path.join(dataset_root, cam_path)
 
             # Replace /camera/ with /pkl/ and .png with .pkl
-            lidar_path = full_cam_path.replace('/camera/', '/pkl/').replace('.png', '.pkl')
+            lidar_path = full_cam_path.replace("/camera/", "/pkl/").replace(".png", ".pkl")
             pickle_paths.append(lidar_path)
 
             # Create output path: replace /camera/ with /lidar_png/
-            output_path = full_cam_path.replace('/camera/', '/lidar_png/').replace('.png', '.png')
+            output_path = full_cam_path.replace("/camera/", "/lidar_png/").replace(".png", ".png")
             if output_root and output_root != dataset_root:
                 output_path = output_path.replace(dataset_root, output_root)
             elif not output_root:
                 # Remove dataset_root prefix when output_root is empty
-                output_path = output_path.replace(dataset_root + '/', '')
+                output_path = output_path.replace(dataset_root + "/", "")
             output_dir = os.path.dirname(output_path)
             output_dirs.append(output_dir)
 
@@ -417,12 +417,14 @@ class XODL2DProjector:
 
             # Create visualization directory if needed
             if create_visualization:
-                visualize_output_path = full_cam_path.replace('/camera/', '/lidar_png_visualize/').replace('.png', '_overlay.png')
+                visualize_output_path = full_cam_path.replace("/camera/", "/lidar_png_visualize/").replace(
+                    ".png", "_overlay.png"
+                )
                 if output_root and output_root != dataset_root:
                     visualize_output_path = visualize_output_path.replace(dataset_root, output_root)
                 elif not output_root:
                     # Remove dataset_root prefix when output_root is empty
-                    visualize_output_path = visualize_output_path.replace(dataset_root + '/', '')
+                    visualize_output_path = visualize_output_path.replace(dataset_root + "/", "")
                 visualize_dir = os.path.dirname(visualize_output_path)
                 os.makedirs(visualize_dir, exist_ok=True)
 
@@ -438,7 +440,9 @@ class XODL2DProjector:
                     if create_visualization:
                         camera_path = os.path.join(dataset_root, camera_paths[i])
                         lidar_png_path = os.path.join(output_dir, f"{Path(pickle_path).stem}.png")
-                        visualize_output_path = camera_paths[i].replace('/camera/', '/lidar_png_visualize/').replace('.png', '_overlay.png')
+                        visualize_output_path = (
+                            camera_paths[i].replace("/camera/", "/lidar_png_visualize/").replace(".png", "_overlay.png")
+                        )
                         if output_root and output_root != dataset_root:
                             visualize_output_path = os.path.join(output_root, visualize_output_path)
                         elif not output_root:
@@ -449,9 +453,13 @@ class XODL2DProjector:
 
                         if os.path.exists(camera_path) and os.path.exists(lidar_png_path):
                             points3d_vis, _, camera_coord_vis = self.load_pickle_data(pickle_path)
-                            self.create_overlay_visualization(camera_path, lidar_png_path, visualize_output_path, points3d_vis, camera_coord_vis)
+                            self.create_overlay_visualization(
+                                camera_path, lidar_png_path, visualize_output_path, points3d_vis, camera_coord_vis
+                            )
                         else:
-                            print(f"Warning: Missing files for overlay - camera: {camera_path}, lidar: {lidar_png_path}")
+                            print(
+                                f"Warning: Missing files for overlay - camera: {camera_path}, lidar: {lidar_png_path}"
+                            )
 
                     processed_count += 1
                 else:
@@ -465,8 +473,8 @@ class XODL2DProjector:
 
 def main():
     # Hardcoded paths for XOD dataset
-    input_path = 'xod_dataset/all.txt'
-    dataset_root = 'xod_dataset'
+    input_path = "xod_dataset/all.txt"
+    dataset_root = "xod_dataset"
     output_root = None  # Will default to dataset_root
     create_visualization = False
 
@@ -486,9 +494,14 @@ def main():
     # Check input type
     input_path = Path(input_path)
     if input_path.is_file():
-        if input_path.suffix.lower() in ['.txt']:
+        if input_path.suffix.lower() == ".txt":
             print(f"Processing from file list: {input_path}")
-            projector.process_from_file_list(str(input_path), dataset_root=dataset_root, output_root=output_root, create_visualization=create_visualization)
+            projector.process_from_file_list(
+                str(input_path),
+                dataset_root=dataset_root,
+                output_root=output_root,
+                create_visualization=create_visualization,
+            )
         else:
             if not output_root:
                 output_root = dataset_root
@@ -501,7 +514,7 @@ def main():
                 # Assume camera images are in camera/ subdirectory at same level as pkl/
                 pickle_dir = input_path.parent
                 dataset_dir = pickle_dir.parent
-                camera_dir = dataset_dir / 'camera'
+                camera_dir = dataset_dir / "camera"
                 pickle_name = input_path.stem
                 camera_file = camera_dir / f"{pickle_name}.png"
                 if camera_file.exists():
@@ -517,5 +530,5 @@ def main():
         projector.process_directory(str(input_path), create_visualization=create_visualization)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -41,14 +41,16 @@ Output Files (per pickle file):
     lidar_png/filename.png              - Combined 3-channel RGB PNG (for training - matches ZOD format) [ALWAYS CREATED]
     lidar_png_visualize/filename_overlay.png    - Camera image with LiDAR projection overlay for alignment verification [--visualize]
 """
+
+import argparse
 import os
 import pickle
-import numpy as np
-import argparse
 from pathlib import Path
+
+import cv2
+import numpy as np
 from PIL import Image
 from tqdm import tqdm
-import cv2
 
 
 class WaymoL2DProjector:
@@ -74,10 +76,10 @@ class WaymoL2DProjector:
         # fx/fy = 1260 * (320/1280) = 1260 * 0.25 = 315
         # cx/cy = 960 * (480/1920) = 960 * 0.25 = 240, 540 * (320/1280) = 540 * 0.25 = 135
         self.camera_intrinsics = {
-            'fx': 315.0,   # focal length x (scaled)
-            'fy': 315.0,   # focal length y (scaled)
-            'cx': 240.0,   # principal point x (scaled)
-            'cy': 135.0,   # principal point y (scaled)
+            "fx": 315.0,  # focal length x (scaled)
+            "fy": 315.0,  # focal length y (scaled)
+            "cx": 240.0,  # principal point x (scaled)
+            "cy": 135.0,  # principal point y (scaled)
         }
 
         # LiDAR normalization parameters (from existing code)
@@ -95,21 +97,22 @@ class WaymoL2DProjector:
             points3d: 3D LiDAR points (N, 3)
             camera_coord: 2D camera coordinates (N, 2) - required for CLFT approach
         """
-        with open(pickle_path, 'rb') as f:
+        with open(pickle_path, "rb") as f:
             lidar_data = pickle.load(f)
 
-        points3d = lidar_data['3d_points']
+        points3d = lidar_data["3d_points"]
 
         # Check if camera coordinates are already projected (required for CLFT approach)
-        if 'camera_coordinates' in lidar_data:
-            camera_coord = lidar_data['camera_coordinates']
+        if "camera_coordinates" in lidar_data:
+            camera_coord = lidar_data["camera_coordinates"]
             # Select front camera (camera 1)
             mask = camera_coord[:, 0] == 1
             points3d = points3d[mask, :]
             camera_coord = camera_coord[mask, 1:3]  # u, v coordinates
             return points3d, camera_coord
-        else:
-            raise ValueError(f"No pre-computed camera coordinates found in {pickle_path}. CLFT approach requires camera_coordinates in pickle file.")
+        raise ValueError(
+            f"No pre-computed camera coordinates found in {pickle_path}. CLFT approach requires camera_coordinates in pickle file."
+        )
 
     def normalize_lidar_points(self, points3d):
         """
@@ -164,8 +167,7 @@ class WaymoL2DProjector:
         cols = np.floor(camera_coord[:, 0]).astype(int)
 
         # Filter valid coordinates
-        valid_mask = (rows >= 0) & (rows < self.output_height) & \
-                    (cols >= 0) & (cols < self.output_width)
+        valid_mask = (rows >= 0) & (rows < self.output_height) & (cols >= 0) & (cols < self.output_width)
 
         rows = rows[valid_mask]
         cols = cols[valid_mask]
@@ -182,9 +184,9 @@ class WaymoL2DProjector:
         Y_norm = ((Y - Y.min()) / (Y.max() - Y.min() + 1e-6) * 255).astype(np.uint8)
         Z_norm = ((Z - Z.min()) / (Z.max() - Z.min() + 1e-6) * 255).astype(np.uint8)
 
-        X_img = Image.fromarray(X_norm, mode='L')
-        Y_img = Image.fromarray(Y_norm, mode='L')
-        Z_img = Image.fromarray(Z_norm, mode='L')
+        X_img = Image.fromarray(X_norm, mode="L")
+        Y_img = Image.fromarray(Y_norm, mode="L")
+        Z_img = Image.fromarray(Z_norm, mode="L")
 
         return X_img, Y_img, Z_img
 
@@ -201,13 +203,12 @@ class WaymoL2DProjector:
             alpha: Transparency alpha for LiDAR overlay (0-1)
         """
         # Load camera image
-        camera_img = Image.open(camera_path).convert('RGBA')
+        camera_img = Image.open(camera_path).convert("RGBA")
 
         # Calculate distances for each point
         distances = np.linalg.norm(points3d, axis=1)  # Euclidean distance from sensor
 
         # Create distance-based image
-        distance_img = np.zeros((self.output_height, self.output_width), dtype=np.float32)
 
         # Convert camera coordinates to image indices (scale to output size)
         # Original camera is ~1920x1280, output is 480x320, so scale by 0.25
@@ -244,7 +245,7 @@ class WaymoL2DProjector:
 
         # Apply TURBO colormap for excellent perceptual uniformity and contrast
         lidar_colored = cv2.applyColorMap(dist_img, cv2.COLORMAP_TURBO)
-        lidar_colored_pil = Image.fromarray(cv2.cvtColor(lidar_colored, cv2.COLOR_BGR2RGB)).convert('RGBA')
+        lidar_colored_pil = Image.fromarray(cv2.cvtColor(lidar_colored, cv2.COLOR_BGR2RGB)).convert("RGBA")
 
         # Apply distance-based alpha with balanced visibility
         r, g, b, a = lidar_colored_pil.split()
@@ -253,11 +254,13 @@ class WaymoL2DProjector:
         intensity = np.array(r)  # Use red channel as intensity proxy
         intensity_norm = intensity.astype(np.float32) / 255.0
         # Balanced alpha: moderate base visibility with slight emphasis on closer objects
-        alpha_values = np.where(intensity > 0,
-                               0.5 + 0.4 * intensity_norm,  # Range from 0.5 to 0.9
-                               0.0)
+        alpha_values = np.where(
+            intensity > 0,
+            0.5 + 0.4 * intensity_norm,  # Range from 0.5 to 0.9
+            0.0,
+        )
         a = Image.fromarray((alpha_values * 255).astype(np.uint8))
-        lidar_overlay = Image.merge('RGBA', (r, g, b, a))
+        lidar_overlay = Image.merge("RGBA", (r, g, b, a))
 
         # Resize overlay to match camera if needed
         if lidar_overlay.size != camera_img.size:
@@ -267,7 +270,7 @@ class WaymoL2DProjector:
         overlaid = Image.alpha_composite(camera_img, lidar_overlay)
 
         # Save
-        overlaid.convert('RGB').save(output_path)
+        overlaid.convert("RGB").save(output_path)
 
     def create_combined_lidar_png(self, X_img, Y_img, Z_img, save_path):
         """
@@ -289,7 +292,7 @@ class WaymoL2DProjector:
         combined_uint8 = (combined_array * 255).astype(np.uint8)
 
         # Create PIL Image
-        combined_img = Image.fromarray(combined_uint8, mode='RGB')
+        combined_img = Image.fromarray(combined_uint8, mode="RGB")
         combined_img.save(save_path)
 
     def process_pickle_file(self, pickle_path, output_dir, create_visualization=False):
@@ -320,7 +323,7 @@ class WaymoL2DProjector:
 
         # Note: Overlay visualization is created in process_from_file_list when camera paths are available
 
-    def process_from_file_list(self, file_list_path, dataset_root='', output_root='', create_visualization=False):
+    def process_from_file_list(self, file_list_path, dataset_root="", output_root="", create_visualization=False):
         """
         Process pickle files listed in a text file (one path per line).
 
@@ -331,7 +334,7 @@ class WaymoL2DProjector:
             create_visualization: Whether to create RGB visualizations
         """
         # Read file list
-        with open(file_list_path, 'r') as f:
+        with open(file_list_path) as f:
             camera_paths = [line.strip() for line in f if line.strip()]
 
         if not camera_paths:
@@ -344,7 +347,7 @@ class WaymoL2DProjector:
         if not dataset_root:
             file_list_path_obj = Path(file_list_path)
             # Assume the file list is in dataset_root/splits_clft/
-            if 'splits_clft' in str(file_list_path_obj):
+            if "splits_clft" in str(file_list_path_obj):
                 dataset_root = str(file_list_path_obj.parent.parent)
             else:
                 # Fallback: assume dataset root is the parent directory of the file list
@@ -358,29 +361,31 @@ class WaymoL2DProjector:
         # Convert camera paths to lidar paths and determine output paths
         pickle_paths = []
         output_dirs = []
-        
+
         for cam_path in camera_paths:
             # Prepend dataset root to camera path
             full_cam_path = os.path.join(dataset_root, cam_path)
-            
+
             # Replace /camera/ with /lidar/ and .png with .pkl to get pickle path
-            lidar_path = full_cam_path.replace('/camera/', '/lidar/').replace('.png', '.pkl')
+            lidar_path = full_cam_path.replace("/camera/", "/lidar/").replace(".png", ".pkl")
             pickle_paths.append(lidar_path)
-            
+
             # Create output path: replace /camera/ with /lidar_png/ and change to .png
-            output_path = full_cam_path.replace('/camera/', '/lidar_png/').replace('.png', '.png')
+            output_path = full_cam_path.replace("/camera/", "/lidar_png/").replace(".png", ".png")
             # Replace dataset_root with output_root in the output path
             if output_root != dataset_root:
                 output_path = output_path.replace(dataset_root, output_root)
             output_dir = os.path.dirname(output_path)
             output_dirs.append(output_dir)
-            
+
             # Create output directory for training data
             os.makedirs(output_dir, exist_ok=True)
-            
+
             # Create output directory for visualizations if needed
             if create_visualization:
-                visualize_output_path = full_cam_path.replace('/camera/', '/lidar_png_visualize/').replace('.png', '_overlay.png')
+                visualize_output_path = full_cam_path.replace("/camera/", "/lidar_png_visualize/").replace(
+                    ".png", "_overlay.png"
+                )
                 if output_root != dataset_root:
                     visualize_output_path = visualize_output_path.replace(dataset_root, output_root)
                 visualize_dir = os.path.dirname(visualize_output_path)
@@ -400,16 +405,22 @@ class WaymoL2DProjector:
                         lidar_png_path = os.path.join(output_dir, f"{Path(pickle_path).stem}.png")
                         # Reconstruct the full camera path for this index
                         current_full_cam_path = os.path.join(dataset_root, camera_paths[i])
-                        visualize_output_path = current_full_cam_path.replace('/camera/', '/lidar_png_visualize/').replace('.png', '_overlay.png')
+                        visualize_output_path = current_full_cam_path.replace(
+                            "/camera/", "/lidar_png_visualize/"
+                        ).replace(".png", "_overlay.png")
                         if output_root != dataset_root:
                             visualize_output_path = visualize_output_path.replace(dataset_root, output_root)
 
                         if os.path.exists(camera_path) and os.path.exists(lidar_png_path):
                             # Load the 3D points data for distance-based visualization
                             points3d_vis, camera_coord_vis = self.load_pickle_data(pickle_path)
-                            self.create_overlay_visualization(camera_path, lidar_png_path, visualize_output_path, points3d_vis, camera_coord_vis)
+                            self.create_overlay_visualization(
+                                camera_path, lidar_png_path, visualize_output_path, points3d_vis, camera_coord_vis
+                            )
                         else:
-                            print(f"Warning: Missing files for overlay - camera: {camera_path}, lidar: {lidar_png_path}")
+                            print(
+                                f"Warning: Missing files for overlay - camera: {camera_path}, lidar: {lidar_png_path}"
+                            )
 
                     processed_count += 1
                 else:
@@ -419,7 +430,6 @@ class WaymoL2DProjector:
                 continue
 
         print(f"Processing complete. Processed {processed_count}/{len(pickle_paths)} files.")
-
 
     def process_directory(self, input_dir, output_dir, create_visualization=False):
         """
@@ -434,8 +444,7 @@ class WaymoL2DProjector:
         os.makedirs(output_dir, exist_ok=True)
 
         # Find all pickle files
-        pickle_files = list(Path(input_dir).glob('**/*.pkl')) + \
-                      list(Path(input_dir).glob('**/*.pickle'))
+        pickle_files = list(Path(input_dir).glob("**/*.pkl")) + list(Path(input_dir).glob("**/*.pickle"))
 
         if not pickle_files:
             print(f"No pickle files found in {input_dir}")
@@ -455,27 +464,31 @@ class WaymoL2DProjector:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Convert Waymo LiDAR pickle files to L2D projections')
-    parser.add_argument('--input', '-i', default='waymo_dataset/splits_clft/all.txt',
-                       help='Input: text file with camera paths (default: waymo_dataset/splits_clft/all.txt), directory containing pickle files, or single pickle file')
-    parser.add_argument('--output', '-o',
-                       help='Output directory (for directory/pickle input) or output root (for file list input)')
-    parser.add_argument('--dataset-root', '-d', default='waymo_dataset',
-                       help='Dataset root directory (default: waymo_dataset)')
-    parser.add_argument('--visualize', action='store_true',
-                       help='Create RGB visualization in addition to combined PNG')
+    parser = argparse.ArgumentParser(description="Convert Waymo LiDAR pickle files to L2D projections")
+    parser.add_argument(
+        "--input",
+        "-i",
+        default="waymo_dataset/splits_clft/all.txt",
+        help="Input: text file with camera paths (default: waymo_dataset/splits_clft/all.txt), directory containing pickle files, or single pickle file",
+    )
+    parser.add_argument(
+        "--output", "-o", help="Output directory (for directory/pickle input) or output root (for file list input)"
+    )
+    parser.add_argument(
+        "--dataset-root", "-d", default="waymo_dataset", help="Dataset root directory (default: waymo_dataset)"
+    )
+    parser.add_argument("--visualize", action="store_true", help="Create RGB visualization in addition to combined PNG")
 
     args = parser.parse_args()
 
     # Initialize projector with fixed 480x320 output size (matches camera/annotation dimensions)
-    projector = WaymoL2DProjector(
-        output_width=480,
-        output_height=320
-    )
+    projector = WaymoL2DProjector(output_width=480, output_height=320)
 
     # Print camera intrinsics info
     print("Using CLFT-conference approach with pre-computed camera coordinates:")
-    print(f"Output size: {projector.output_width}x{projector.output_height} (fixed to match camera/annotation dimensions)")
+    print(
+        f"Output size: {projector.output_width}x{projector.output_height} (fixed to match camera/annotation dimensions)"
+    )
     for key, value in projector.camera_intrinsics.items():
         print(f"  {key}: {value}")
     print(f"LiDAR mean: {projector.lidar_mean}")
@@ -486,12 +499,14 @@ def main():
     input_path = Path(args.input)
     if input_path.is_file():
         # Check if it's a text file (contains camera paths) or a pickle file
-        if input_path.suffix.lower() in ['.txt']:
+        if input_path.suffix.lower() == ".txt":
             # Process from file list - by default only create combined PNGs for training
             print(f"Processing from file list: {input_path}")
-            output_root = args.output if args.output else ''
+            output_root = args.output or ""
             dataset_root = args.dataset_root
-            projector.process_from_file_list(str(input_path), dataset_root=dataset_root, output_root=output_root, create_visualization=args.visualize)
+            projector.process_from_file_list(
+                str(input_path), dataset_root=dataset_root, output_root=output_root, create_visualization=args.visualize
+            )
         else:
             # Process single pickle file - requires output directory
             if not args.output:
@@ -507,5 +522,5 @@ def main():
         projector.process_directory(args.input, args.output, args.visualize)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

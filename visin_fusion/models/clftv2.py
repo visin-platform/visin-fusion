@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Swin Transformer based fusion model for camera-lidar segmentation.
 """
 
+import timm
 import torch
 import torch.nn as nn
-import timm
+
 
 class Read_ignore(nn.Module):
     def __init__(self, start_index=1):
-        super(Read_ignore, self).__init__()
+        super().__init__()
         self.start_index = start_index
 
     def forward(self, x):
-        return x[:, self.start_index:]
+        return x[:, self.start_index :]
+
 
 class Read_add(nn.Module):
     def __init__(self, start_index=1):
-        super(Read_add, self).__init__()
+        super().__init__()
         self.start_index = start_index
 
     def forward(self, x):
@@ -28,9 +29,10 @@ class Read_add(nn.Module):
             readout = x[:, 0]
         return x[:, self.start_index :] + readout.unsqueeze(1)
 
+
 class Read_projection(nn.Module):
     def __init__(self, in_features, start_index=1):
-        super(Read_projection, self).__init__()
+        super().__init__()
         self.start_index = start_index
         self.project = nn.Sequential(nn.Linear(2 * in_features, in_features), nn.GELU())
 
@@ -39,10 +41,11 @@ class Read_projection(nn.Module):
         features = torch.cat((x[:, self.start_index :], readout), -1)
         return self.project(features)
 
+
 class Resample(nn.Module):
     def __init__(self, s, emb_dim, resample_dim):
-        super(Resample, self).__init__()
-        assert (s in [4, 8, 16, 32]), "s must be in [4, 8, 16, 32]"
+        super().__init__()
+        assert s in [4, 8, 16, 32], "s must be in [4, 8, 16, 32]"
         self.emb_dim = emb_dim
         self.resample_dim = resample_dim
         self.s = s
@@ -54,21 +57,22 @@ class Resample(nn.Module):
             self.emb_dim = x.shape[1]
             self.conv1 = nn.Conv2d(self.emb_dim, self.resample_dim, kernel_size=1, stride=1, padding=0).to(x.device)
         x = self.conv1(x)
-        x = nn.functional.interpolate(x, scale_factor=self.s, mode='bilinear', align_corners=False)
+        x = nn.functional.interpolate(x, scale_factor=self.s, mode="bilinear", align_corners=False)
         return x
+
 
 class SpatialReassemble(nn.Module):
     def __init__(self, read, s, emb_dim, resample_dim):
         """
         Modified for spatial inputs [b, c, h, w]
         """
-        super(SpatialReassemble, self).__init__()
+        super().__init__()
 
         # For spatial, read and concat are identity
         self.read = nn.Identity()
         self.concat = nn.Identity()
 
-        #Projection + Resample
+        # Projection + Resample
         self.resample = Resample(s, emb_dim, resample_dim)
 
     def forward(self, x):
@@ -77,6 +81,7 @@ class SpatialReassemble(nn.Module):
         x = self.concat(x)
         x = self.resample(x)
         return x
+
 
 class ResidualConvUnit(nn.Module):
     def __init__(self, features):
@@ -99,67 +104,71 @@ class ResidualConvUnit(nn.Module):
         out = self.conv2(out)
         return out + x
 
+
 class CrossAttention(nn.Module):
-    def __init__(self, dim, num_heads=4, qkv_bias=False, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=4, qkv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
         self.num_heads = num_heads
-        self.multihead_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True, dropout=attn_drop)
+        self.multihead_attn = nn.MultiheadAttention(
+            embed_dim=dim, num_heads=num_heads, batch_first=True, dropout=attn_drop
+        )
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, context):
         # x: [B, C, H, W] (Query - Camera)
         # context: [B, C, H, W] (Key/Value - LiDAR)
         B, C, H, W = x.shape
-        
+
         # Optimization: Downsample if spatial dimensions are too large to prevent OOM
         # Target size 64x64 results in 4096 tokens, which is manageable
         target_h, target_w = 64, 64
         is_downsampled = False
-        if H > target_h or W > target_w:
+        if target_h < H or target_w < W:
             x_in = nn.functional.adaptive_avg_pool2d(x, (target_h, target_w))
             context_in = nn.functional.adaptive_avg_pool2d(context, (target_h, target_w))
             is_downsampled = True
         else:
             x_in = x
             context_in = context
-        
+
         # Flatten: [B, C, H', W'] -> [B, C, N] -> [B, N, C]
         x_flat = x_in.flatten(2).transpose(1, 2)
         context_flat = context_in.flatten(2).transpose(1, 2)
-        
+
         # Attention
         # query=x, key=context, value=context
         attn_out, _ = self.multihead_attn(query=x_flat, key=context_flat, value=context_flat)
-        
+
         # Dropout
         attn_out = self.proj_drop(attn_out)
-        
+
         # Reshape back: [B, N, C] -> [B, C, H', W']
         if is_downsampled:
             out = attn_out.transpose(1, 2).reshape(B, C, target_h, target_w)
             # Upsample back to original resolution
-            out = nn.functional.interpolate(out, size=(H, W), mode='bilinear', align_corners=False)
+            out = nn.functional.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
         else:
             out = attn_out.transpose(1, 2).reshape(B, C, H, W)
-            
+
         return out
 
+
 class Fusion(nn.Module):
-    def __init__(self, resample_dim, fusion_strategy=''):
-        super(Fusion, self).__init__()
+    def __init__(self, resample_dim, fusion_strategy=""):
+        super().__init__()
         if not fusion_strategy:
             raise ValueError("fusion_strategy must be specified and cannot be empty")
         self.res_conv_xyz = ResidualConvUnit(resample_dim)
         self.res_conv_rgb = ResidualConvUnit(resample_dim)
         self.res_conv2 = ResidualConvUnit(resample_dim)
-        
+
         self.fusion_strategy = fusion_strategy
-        
-        if self.fusion_strategy == 'cross_attention':
+
+        if self.fusion_strategy == "cross_attention":
             # Cross Attention for Fusion
             self.cross_attn = CrossAttention(resample_dim)
-            self.alpha = nn.Parameter(torch.tensor(0.0)) # Learnable scaling parameter
-        elif self.fusion_strategy == 'gmf':
+            self.alpha = nn.Parameter(torch.tensor(0.0))  # Learnable scaling parameter
+        elif self.fusion_strategy == "gmf":
             # Geometric Modulation Fusion
             self.modulation_mlp = nn.Sequential(
                 nn.AdaptiveAvgPool2d(1),
@@ -168,60 +177,59 @@ class Fusion(nn.Module):
                 nn.ReLU(),
             )
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
-        elif self.fusion_strategy == 'spatial_fusion':
+        elif self.fusion_strategy == "spatial_fusion":
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
             self.ln_rgb = nn.LayerNorm(resample_dim)
             self.ln_lidar = nn.LayerNorm(resample_dim)
             # Spatial attention for beta: outputs 1 channel [B, 1, H, W]
-            self.beta_attn = nn.Sequential(
-                nn.Conv2d(resample_dim * 2, 1, kernel_size=1),
-                nn.Sigmoid()
-            )
-        elif self.fusion_strategy == 'gated_average':
+            self.beta_attn = nn.Sequential(nn.Conv2d(resample_dim * 2, 1, kernel_size=1), nn.Sigmoid())
+        elif self.fusion_strategy == "gated_average":
             self.alpha = nn.Parameter(torch.zeros(1))
-        elif self.fusion_strategy == 'ln_gated_average':
+        elif self.fusion_strategy == "ln_gated_average":
             self.alpha = nn.Parameter(torch.zeros(1))
             self.ln_rgb = nn.LayerNorm(resample_dim)
             self.ln_lidar = nn.LayerNorm(resample_dim)
-        elif self.fusion_strategy == 'sigmoid_gated_average':
+        elif self.fusion_strategy == "sigmoid_gated_average":
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter constrained via sigmoid
-        elif self.fusion_strategy == 'residual_average':
+        elif self.fusion_strategy == "residual_average":
             # Middle ground: residual convs + average + previous stage (no gating)
             pass
-        elif self.fusion_strategy == 'gated_average_no_prev':
+        elif self.fusion_strategy == "gated_average_no_prev":
             # Ablate previous_stage: residual convs + gating, no previous stage
             self.alpha = nn.Parameter(torch.zeros(1))
-        elif self.fusion_strategy == 'weighted_average':
+        elif self.fusion_strategy == "weighted_average":
             # Global weighted average with gating
             self.alpha = nn.Parameter(torch.zeros(1))
             self.beta = nn.Parameter(torch.tensor(0.5))
-        elif self.fusion_strategy == 'simple_average':
+        elif self.fusion_strategy == "simple_average":
             # No additional parameters for true simple average
             pass
 
-    def forward(self, rgb, lidar, previous_stage=None, modal = 'rgb'):
+    def forward(self, rgb, lidar, previous_stage=None, modal="rgb"):
         if previous_stage is None:
             previous_stage = torch.zeros_like(rgb)
         else:
-            previous_stage = nn.functional.interpolate(previous_stage, size=rgb.shape[2:], mode='bilinear', align_corners=False)
+            previous_stage = nn.functional.interpolate(
+                previous_stage, size=rgb.shape[2:], mode="bilinear", align_corners=False
+            )
 
         attn_out = torch.zeros_like(rgb)
 
-        if modal == 'rgb':
+        if modal == "rgb":
             output_stage1_rgb = self.res_conv_rgb(rgb)
             output_stage1 = output_stage1_rgb + previous_stage
-        elif modal == 'lidar':
+        elif modal == "lidar":
             output_stage1_lidar = self.res_conv_xyz(lidar)
             output_stage1 = output_stage1_lidar + previous_stage
-        elif modal == 'cross_fusion':
-            if self.fusion_strategy == 'cross_attention':
+        elif modal == "cross_fusion":
+            if self.fusion_strategy == "cross_attention":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Apply Cross Attention: Query=RGB, Key/Value=LiDAR
                 attn_out = self.cross_attn(output_stage1_rgb, output_stage1_lidar)
                 # Formula: F_f = F_c + alpha * Attention(F_c, F_l) + F_l
                 output_stage1 = output_stage1_rgb + (self.alpha * attn_out) + output_stage1_lidar + previous_stage
-            elif self.fusion_strategy == 'gmf':
+            elif self.fusion_strategy == "gmf":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Geometric Modulation Fusion
@@ -231,78 +239,82 @@ class Fusion(nn.Module):
                 beta = beta.unsqueeze(-1).unsqueeze(-1)
                 rgb_mod = gamma * output_stage1_rgb + beta
                 # Gated residual
-                output_stage1 = rgb_mod + output_stage1_lidar + previous_stage + self.alpha * (rgb_mod + output_stage1_lidar)
-            elif self.fusion_strategy == 'adder_fusion':
+                output_stage1 = (
+                    rgb_mod + output_stage1_lidar + previous_stage + self.alpha * (rgb_mod + output_stage1_lidar)
+                )
+            elif self.fusion_strategy == "adder_fusion":
                 # True simple average fusion without resblocks and previous stage
                 output_stage1 = rgb + lidar
-            elif self.fusion_strategy == 'simple_average':
+            elif self.fusion_strategy == "simple_average":
                 # True simple average fusion without resblocks and previous stage
                 output_stage1 = (rgb + lidar) / 2
-            elif self.fusion_strategy == 'simple_average_w_prev':
+            elif self.fusion_strategy == "simple_average_w_prev":
                 output_stage1 = (rgb + lidar) + previous_stage
-            elif self.fusion_strategy == 'resconv_average':
+            elif self.fusion_strategy == "resconv_average":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                output_stage1 = (output_stage1_rgb + output_stage1_lidar)     
-            elif self.fusion_strategy == 'residual_average':
+                output_stage1 = output_stage1_rgb + output_stage1_lidar
+            elif self.fusion_strategy == "residual_average":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                simple_avg = output_stage1_rgb + output_stage1_lidar
                 output_stage1 = simple_avg + previous_stage
-            elif self.fusion_strategy == 'gated_average':
+            elif self.fusion_strategy == "gated_average":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                simple_avg = output_stage1_rgb + output_stage1_lidar
                 output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
-            elif self.fusion_strategy == 'ln_gated_average':
+            elif self.fusion_strategy == "ln_gated_average":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Apply layer normalization
                 output_stage1_rgb = self.ln_rgb(output_stage1_rgb.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                 output_stage1_lidar = self.ln_lidar(output_stage1_lidar.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                simple_avg = output_stage1_rgb + output_stage1_lidar
                 output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
-            elif self.fusion_strategy == 'spatial_fusion':
+            elif self.fusion_strategy == "spatial_fusion":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Apply layer normalization
                 output_stage1_rgb = self.ln_rgb(output_stage1_rgb.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                 output_stage1_lidar = self.ln_lidar(output_stage1_lidar.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-                
+
                 # Spatial adaptive weighting
                 beta_map = self.beta_attn(torch.cat([output_stage1_rgb, output_stage1_lidar], dim=1))  # [B, C, H, W]
                 weighted_avg = (1 - beta_map) * output_stage1_rgb + beta_map * output_stage1_lidar
                 output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * weighted_avg
-            elif self.fusion_strategy == 'sigmoid_gated_average':
+            elif self.fusion_strategy == "sigmoid_gated_average":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                simple_avg = output_stage1_rgb + output_stage1_lidar
                 alpha_gate = torch.sigmoid(self.alpha)  # Constrain alpha to [0,1] for stable gating
                 output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + alpha_gate * simple_avg
             else:
                 raise ValueError(f"Unknown fusion strategy: {self.fusion_strategy}")
-        
+
         output_stage2 = self.res_conv2(output_stage1)
-        
-        #output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
+
+        # output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
         return output_stage2
 
 
 class HeadDepth(nn.Module):
     def __init__(self, resample_dim):
-        super(HeadDepth, self).__init__()
+        super().__init__()
         self.conv = nn.Conv2d(resample_dim, 1, kernel_size=3, stride=1, padding=1, bias=True)
 
     def forward(self, x):
         return self.conv(x)
 
+
 class HeadSeg(nn.Module):
     """Two-conv segmentation head: Conv3x3-BN-ReLU → Conv1x1."""
+
     def __init__(self, resample_dim, nclasses):
-        super(HeadSeg, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(resample_dim, resample_dim, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn    = nn.BatchNorm2d(resample_dim)
-        self.relu  = nn.ReLU(inplace=True)
+        self.bn = nn.BatchNorm2d(resample_dim)
+        self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(resample_dim, nclasses, kernel_size=1, bias=True)
 
     def forward(self, x):
@@ -310,17 +322,18 @@ class HeadSeg(nn.Module):
 
 
 class CLFTv2Network(nn.Module):
-    def __init__(self,
-                 emb_dims=[128, 256, 512, 1024],
-                 resample_dim=256,
-                 read='ignore',
-                 reassemble_s=[4, 8, 16, 32],
-                 nclasses=None,
-                 type='segmentation',
-                 model_timm='swin_base_patch4_window7_224',
-                 pretrained=True,
-                 fusion_strategy=''
-                 ):
+    def __init__(
+        self,
+        emb_dims=(128, 256, 512, 1024),
+        resample_dim=256,
+        read="ignore",
+        reassemble_s=(4, 8, 16, 32),
+        nclasses=None,
+        type="segmentation",
+        model_timm="swin_base_patch4_window7_224",
+        pretrained=True,
+        fusion_strategy="",
+    ):
         """
         Swin-based fusion model.
         """
@@ -332,20 +345,20 @@ class CLFTv2Network(nn.Module):
         self.type_ = type
         self.is_spatial = True
         self.resample_dim = resample_dim
-        
+
         # Automatically detect embedding dimensions from the backbone
-        if hasattr(self.transformer_encoders, 'feature_info'):
+        if hasattr(self.transformer_encoders, "feature_info"):
             self.emb_dims = self.transformer_encoders.feature_info.channels()
         elif emb_dims is not None:
             self.emb_dims = emb_dims
         else:
             raise ValueError("emb_dims must be provided if backbone does not have feature_info")
-            
+
         # Projections for ablation (instead of reassembles)
         self.projections_RGB = []
         self.projections_XYZ = []
         self.fusions = []
-        for i, s in enumerate(reassemble_s):
+        for i in range(len(reassemble_s)):
             emb_dim_i = self.emb_dims[i]
             self.projections_RGB.append(nn.Conv2d(emb_dim_i, resample_dim, kernel_size=1))
             self.projections_XYZ.append(nn.Conv2d(emb_dim_i, resample_dim, kernel_size=1))
@@ -354,7 +367,7 @@ class CLFTv2Network(nn.Module):
         self.projections_XYZ = nn.ModuleList(self.projections_XYZ)
         self.fusions = nn.ModuleList(self.fusions)
 
-        #Head
+        # Head
         if type == "full":
             self.head_depth = HeadDepth(resample_dim)
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
@@ -365,32 +378,32 @@ class CLFTv2Network(nn.Module):
             self.head_depth = None
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
 
-    def forward(self, rgb, lidar, modal='rgb'):
-        if modal == 'rgb':
+    def forward(self, rgb, lidar, modal="rgb"):
+        if modal == "rgb":
             features_rgb = self.transformer_encoders(rgb)
             features_lidar = None
-        elif modal == 'lidar':
+        elif modal == "lidar":
             features_lidar = self.transformer_encoders(lidar)
             features_rgb = None
-        elif modal == 'cross_fusion':
+        elif modal == "cross_fusion":
             features_rgb = self.transformer_encoders(rgb)
             features_lidar = self.transformer_encoders(lidar)
         else:
             raise ValueError(f"Invalid modal: {modal}")
-        
+
         n = len(self.fusions)
         # Coarse-to-fine: start at the smallest (deepest) scale and progressively
         # upsample into finer scales — proper FPN/DPT-style feature pyramid.
         # reassemble_s = [4, 8, 16, 32]  →  index  3 (scale 32) first, 0 (scale 4) last.
         previous_stage = None
         for i in range(n - 1, -1, -1):
-            if modal == 'rgb':
+            if modal == "rgb":
                 activation_result_rgb = features_rgb[i]
                 activation_result_lidar = torch.zeros_like(activation_result_rgb)
-            elif modal == 'lidar':
+            elif modal == "lidar":
                 activation_result_lidar = features_lidar[i]
                 activation_result_rgb = torch.zeros_like(activation_result_lidar)
-            elif modal == 'cross_fusion':
+            elif modal == "cross_fusion":
                 activation_result_rgb = features_rgb[i]
                 activation_result_lidar = features_lidar[i]
 
@@ -418,9 +431,10 @@ class CLFTv2Network(nn.Module):
         # Upsample to actual input resolution
         H, W = rgb.shape[-2], rgb.shape[-1]
         if out_depth is not None:
-            out_depth = nn.functional.interpolate(out_depth, size=(H, W), mode='bilinear', align_corners=False)
+            out_depth = nn.functional.interpolate(out_depth, size=(H, W), mode="bilinear", align_corners=False)
         if out_segmentation is not None:
-            out_segmentation = nn.functional.interpolate(out_segmentation, size=(H, W), mode='bilinear', align_corners=False)
+            out_segmentation = nn.functional.interpolate(
+                out_segmentation, size=(H, W), mode="bilinear", align_corners=False
+            )
 
         return out_depth, out_segmentation
-

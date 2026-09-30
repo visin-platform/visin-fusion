@@ -45,4 +45,4 @@ python -m pip install -e '.[train,visin]'
 cp .env.example .env  # then set VISIN_TOKEN; or export VISIN_ENV_FILE=/path/to/visin.env
 ```
 
-Without a pipeline key, the run remains local. See the [Visin integration guide](https://github.com/visin-platform/visin-fusion/blob/main/integrations/README.md) for offline nodes and report syncing.
+Without a pipeline key, the run remains local. See the [Visin integration guide](visin.md) for offline nodes and report syncing.

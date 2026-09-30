@@ -12,9 +12,11 @@ copied at the call, so the next image may reuse the same output paths.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
 # The kinds each stages/visualize/*.py script renders, one subdirectory each.
 VISUALIZATION_KINDS = ("segment", "overlay", "compare", "correct_only")
@@ -26,7 +28,7 @@ def queue_visualizations(run: Any, epoch: int, epoch_uuid: str, output_base: str
     for kind in VISUALIZATION_KINDS:
         path = os.path.join(output_base, kind, image_name)
         if not os.path.exists(path):
-            print(f"Skipping {kind} - file not found: {path}")
+            logger.warning("Skipping %s - file not found: %s", kind, path)
             continue
         run.upload_visualization(
             epoch,
@@ -37,5 +39,3 @@ def queue_visualizations(run: Any, epoch: int, epoch_uuid: str, output_base: str
         )
         queued += 1
     return queued
-
-

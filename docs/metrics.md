@@ -113,7 +113,7 @@ Looking at the provided metrics:
 
 ## Average precision (AP)
 
-Computed per class in `utils/metrics.py`, the same way for every model:
+Computed per class in `visin_fusion/utils/metrics.py`, the same way for every model:
 
 - For each test image, every pixel that the model **predicts as the class or that is labelled as the
   class** is kept, with the model's softmax probability for the class and whether the label matches.

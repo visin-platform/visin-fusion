@@ -1,39 +1,40 @@
-"""What a run's config may contain, checked when it is loaded (utils/config.py).
+"""What a run's config may contain, checked when it is loaded (visin_fusion/config/config.py).
 
 The shared sections (CLI, General, Log, Dataset) are strict: an unknown key, usually a typo, is an
 error before any training starts. Model sections (CLFTv2, CLFT, ...) are free-form until each
 model declares its own options (TODO.md, section 5).
 
-    python -m utils.config_schema > config.schema.json   # JSON Schema, e.g. for a UI's forms
+    visin-fusion schema > config.schema.json   # JSON Schema, e.g. for a UI's forms
 """
+
 import json
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-SCHEMA_VERSION = '2.0'
+SCHEMA_VERSION = "2.0"
 
 # CLI.backbone -> its model section and the modes it supports
 BACKBONES = {
-    'clft': ('CLFT', ('rgb', 'lidar', 'cross_fusion')),
-    'clftv2': ('CLFTv2', ('rgb', 'lidar', 'cross_fusion')),
-    'maskformer': ('MaskFormer', ('rgb', 'lidar', 'cross_fusion')),
-    'mask2former': ('Mask2Former', ('rgb', 'lidar', 'cross_fusion')),
-    'deeplabv3plus': ('DeepLabV3Plus', ('rgb', 'lidar', 'fusion')),
+    "clft": ("CLFT", ("rgb", "lidar", "cross_fusion")),
+    "clftv2": ("CLFTv2", ("rgb", "lidar", "cross_fusion")),
+    "maskformer": ("MaskFormer", ("rgb", "lidar", "cross_fusion")),
+    "mask2former": ("Mask2Former", ("rgb", "lidar", "cross_fusion")),
+    "deeplabv3plus": ("DeepLabV3Plus", ("rgb", "lidar", "fusion")),
 }
 
 
 class Strict(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
 
 
 class CLI(Strict):
-    backbone: Literal['clft', 'clftv2', 'maskformer', 'mask2former', 'deeplabv3plus'] = Field(
-        description='The model')
-    mode: Literal['rgb', 'lidar', 'fusion', 'cross_fusion'] = Field(
-        description="Inputs: camera (rgb), LiDAR (lidar) or both (fusion; cross_fusion is the same)")
+    backbone: Literal["clft", "clftv2", "maskformer", "mask2former", "deeplabv3plus"] = Field(description="The model")
+    mode: Literal["rgb", "lidar", "fusion", "cross_fusion"] = Field(
+        description="Inputs: camera (rgb), LiDAR (lidar) or both (fusion; cross_fusion is the same)"
+    )
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def mode_fits_backbone(self):
         modes = BACKBONES[self.backbone][1]
         if self.mode not in modes:
@@ -42,97 +43,106 @@ class CLI(Strict):
 
 
 class General(Strict):
-    device: str = Field('cuda:0', description='Torch device; the CPU is used when CUDA is not available')
+    device: str = Field("cuda:0", description="Torch device; the CPU is used when CUDA is not available")
     epochs: int = Field(ge=1)
     batch_size: int = Field(ge=1)
     seed: int = 0
-    resume_training: bool = Field(False, description='Continue from the latest checkpoint in Log.logdir')
-    reset_lr: bool = Field(False, description='When resuming, start the learning-rate schedule again')
-    early_stop_patience: int = Field(ge=1, description='Epochs without a better validation mIoU before stopping')
-    max_checkpoints: int = Field(ge=1, description='Best checkpoints kept')
-    model_path: str = Field('', description='Checkpoint to start from; empty for the latest in Log.logdir')
-    transfer_learning: bool = Field(False, description='Start from model_path trained on other classes')
-    source_classes: Optional[list] = Field(None, description='The classes model_path was trained on')
-    create_new_training: bool = Field(False, description='Start a new Visin run even when resuming')
+    resume_training: bool = Field(False, description="Continue from the latest checkpoint in Log.logdir")
+    reset_lr: bool = Field(False, description="When resuming, start the learning-rate schedule again")
+    early_stop_patience: int = Field(ge=1, description="Epochs without a better validation mIoU before stopping")
+    max_checkpoints: int = Field(ge=1, description="Best checkpoints kept")
+    model_path: str = Field("", description="Checkpoint to start from; empty for the latest in Log.logdir")
+    transfer_learning: bool = Field(False, description="Start from model_path trained on other classes")
+    source_classes: list | None = Field(None, description="The classes model_path was trained on")
+    create_new_training: bool = Field(False, description="Start a new Visin run even when resuming")
 
 
 class Log(Strict):
-    logdir: str = Field(description='Epoch logs, checkpoints, test results, visualizations and benchmarks')
+    logdir: str = Field(description="Epoch logs, checkpoints, test results, visualizations and benchmarks")
 
 
 class DatasetClass(Strict):
     name: str
-    index: int = Field(ge=0, description='Label value in the annotation images')
+    index: int = Field(ge=0, description="Label value in the annotation images")
 
 
 class TrainClass(Strict):
     name: str
-    index: int = Field(ge=0, description='Model output channel; 0..n-1 without gaps, 0 is background')
-    weight: float = Field(1.0, gt=0, description='Loss weight')
-    dataset_mapping: list[int] = Field(description='Dataset class indices merged into this class')
-    color: list[int] = Field(min_length=3, max_length=3, description='RGB color in visualizations')
+    index: int = Field(ge=0, description="Model output channel; 0..n-1 without gaps, 0 is background")
+    weight: float = Field(1.0, gt=0, description="Loss weight")
+    dataset_mapping: list[int] = Field(description="Dataset class indices merged into this class")
+    color: list[int] = Field(min_length=3, max_length=3, description="RGB color in visualizations")
 
 
 Triple = list[float]
 
 
 class Transforms(Strict):
-    resize: int = Field(ge=1, description='Square input size')
-    random_rotate_range: float = Field(0, ge=0, description='Training rotation range, degrees')
+    resize: int = Field(ge=1, description="Square input size")
+    random_rotate_range: float = Field(0, ge=0, description="Training rotation range, degrees")
     p_flip: float = Field(0, ge=0, le=1)
     p_crop: float = Field(0, ge=0, le=1)
     p_rot: float = Field(0, ge=0, le=1)
     image_mean: Triple = Field(min_length=3, max_length=3)
     image_std: Triple = Field(min_length=3, max_length=3)
-    lidar_mean: Optional[Triple] = Field(None, min_length=3, max_length=3)
-    lidar_std: Optional[Triple] = Field(None, min_length=3, max_length=3)
+    lidar_mean: Triple | None = Field(None, min_length=3, max_length=3)
+    lidar_std: Triple | None = Field(None, min_length=3, max_length=3)
 
 
 class Dataset(Strict):
     name: str
-    dataset_root: str = Field(description='Frames in the split files are relative to this; '
-                                          'may use environment variables, e.g. "$DATA_ROOT/zod"')
+    dataset_root: str = Field(
+        description="Frames in the split files are relative to this; "
+        'may use environment variables, e.g. "$DATA_ROOT/zod"'
+    )
     train_split: str
     val_split: str
-    split_dir: Optional[str] = Field(None, description='Where test and visualization splits are (utils/splits.py)')
-    test_splits: Optional[dict[str, str]] = Field(None, description='Test sets: name -> split file')
-    visualization_split: Optional[str] = None
-    annotation_path: Optional[str] = Field(None, description="Annotation folder that replaces a frame's camera folder")
-    layout: Optional[dict[str, str]] = Field(None, description="Frame folders, e.g. {'camera': 'camera', 'lidar': 'lidar_png'}")
+    split_dir: str | None = Field(
+        None, description="Where test and visualization splits are (visin_fusion/config/splits.py)"
+    )
+    test_splits: dict[str, str] | None = Field(None, description="Test sets: name -> split file")
+    visualization_split: str | None = None
+    annotation_path: str | None = Field(None, description="Annotation folder that replaces a frame's camera folder")
+    layout: dict[str, str] | None = Field(
+        None, description="Frame folders, e.g. {'camera': 'camera', 'lidar': 'lidar_png'}"
+    )
     dataset_classes: list[DatasetClass] = Field(min_length=1)
     train_classes: list[TrainClass] = Field(min_length=1)
     transforms: Transforms
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def classes_fit(self):
         indices = sorted(c.index for c in self.train_classes)
         if indices != list(range(len(indices))):
-            raise ValueError(f'train_classes indices must be 0..{len(indices) - 1} with no gaps or duplicates, '
-                             f'got {indices}')
+            raise ValueError(
+                f"train_classes indices must be 0..{len(indices) - 1} with no gaps or duplicates, got {indices}"
+            )
         known = {c.index for c in self.dataset_classes}
         for train_class in self.train_classes:
             unknown = sorted(set(train_class.dataset_mapping) - known)
             if unknown:
-                raise ValueError(f"train class {train_class.name!r} maps dataset classes {unknown}, "
-                                 f"which dataset_classes does not have")
+                raise ValueError(
+                    f"train class {train_class.name!r} maps dataset classes {unknown}, "
+                    f"which dataset_classes does not have"
+                )
         return self
 
 
 class Config(Strict):
-    Summary: str = Field('', description='Run name, e.g. in Visin')
-    description: str = Field('', description='What this config or preset is for')
+    Summary: str = Field("", description="Run name, e.g. in Visin")
+    description: str = Field("", description="What this config or preset is for")
     tags: list[str] = []
     CLI: CLI
     General: General
     Log: Log
     Dataset: Dataset
-    CLFT: Optional[dict] = None
-    CLFTv2: Optional[dict] = None
-    MaskFormer: Optional[dict] = None
-    Mask2Former: Optional[dict] = None
-    DeepLabV3Plus: Optional[dict] = None
+    CLFT: dict | None = None
+    CLFTv2: dict | None = None
+    MaskFormer: dict | None = None
+    Mask2Former: dict | None = None
+    DeepLabV3Plus: dict | None = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def has_model_section(self):
         section = BACKBONES[self.CLI.backbone][0]
         if getattr(self, section) is None:
@@ -149,17 +159,17 @@ def validate_config(config):
     try:
         Config.model_validate(config)
     except ValidationError as e:
-        problems = '\n'.join(f"  {'.'.join(map(str, err['loc'])) or '(config)'}: {err['msg']}" for err in e.errors())
-        raise ConfigError(f'Invalid config:\n{problems}') from None
+        problems = "\n".join(f"  {'.'.join(map(str, err['loc'])) or '(config)'}: {err['msg']}" for err in e.errors())
+        raise ConfigError(f"Invalid config:\n{problems}") from None
     return config
 
 
 def export_schema():
     schema = Config.model_json_schema()
-    schema['$id'] = f'https://visin.eu/schemas/visin-fusion/{SCHEMA_VERSION}/config.schema.json'
-    schema['x-schema-version'] = SCHEMA_VERSION
+    schema["$id"] = f"https://visin.eu/schemas/visin-fusion/{SCHEMA_VERSION}/config.schema.json"
+    schema["x-schema-version"] = SCHEMA_VERSION
     return schema
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(json.dumps(export_schema(), indent=2))
