@@ -10,6 +10,12 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-30
+
+No user-facing changes.
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/visin-platform/visin-fusion/compare/v0.1.0...v0.1.1
 ## [0.1.0] - 2026-09-28
 
 - Packaged the code as `visin_fusion` with model, training and Visin extras, a console command,
@@ -57,5 +63,4 @@ The training code became a generic tool: one implementation per stage for every 
   training mode after profiling.
 - A missing annotation silently became an empty mask; it now prints a warning naming the file.
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/visin-platform/visin-fusion/releases/tag/v0.1.0
