@@ -1,32 +1,58 @@
 """visin_fusion/config/config_schema.py: every shipped config is valid, and typical mistakes are caught."""
 
 import copy
-import glob
 import json
+import os
 from pathlib import Path
 
 import pytest
 
-from visin_fusion.config.config import resolve_extends
+from visin_fusion.config.config import prepare_config, resolve_extends
 from visin_fusion.config.config_schema import Config, ConfigError, validate_config
-from visin_fusion.config.dataset_manifest import apply_manifest
 
 REPO = Path(__file__).resolve().parents[2]
-# Complete configs; presets are tested with a dataset in test_config.py
-CONFIGS = sorted(p for p in glob.glob(str(REPO / "configs" / "**" / "*.json"), recursive=True) if "/presets/" not in p)
+# Dataset fragments are inputs to manifest generation, not complete run configs.
+CONFIGS = sorted(p for p in (REPO / "configs").rglob("*.json") if "datasets" not in p.relative_to(REPO).parts)
 QUICKSTART = REPO / "configs" / "quickstart.json"
 
 
 def load(path):
+    path = Path(path)
     with open(path) as f:
-        config = resolve_extends(json.load(f))
-    if "dataset_root" in config.get("Dataset", {}) and not Path(config["Dataset"]["dataset_root"]).is_absolute():
-        config["Dataset"]["dataset_root"] = str(REPO / config["Dataset"]["dataset_root"])
-    return apply_manifest(config)
+        config = resolve_extends(json.load(f), str(path.parent))
+    root = config.get("Dataset", {}).get("dataset_root")
+    if root and not Path(os.path.expandvars(root)).is_absolute():
+        config["Dataset"]["dataset_root"] = str(REPO / root)
+    return prepare_config(config, str(path.parent))
+
+
+@pytest.fixture
+def dataset_roots(tmp_path, monkeypatch):
+    """Provide the manifests external example datasets supply in a real run."""
+    for path in sorted((REPO / "configs" / "datasets").glob("*.json")):
+        dataset = json.loads(path.read_text())["Dataset"]
+        root = tmp_path / path.stem
+        root.mkdir()
+        annotations = (
+            ["annotation_fusion", "annotation_camera_only", "annotation_lidar_only"]
+            if path.stem == "zod"
+            else [dataset["annotation_path"]]
+        )
+        manifest = {
+            "format": 1,
+            "name": dataset["name"],
+            "classes": dataset["dataset_classes"],
+            "train_classes": dataset["train_classes"],
+            "normalization": dataset["transforms"],
+            "annotations": annotations,
+            "splits": {"train": "train.txt", "val": "validation.txt"},
+        }
+        (root / "dataset.json").write_text(json.dumps(manifest))
+        monkeypatch.setenv(f"{path.stem.upper()}_DATA_DIR", str(root))
 
 
 @pytest.mark.parametrize("path", CONFIGS, ids=lambda p: str(Path(p).relative_to(REPO)))
-def test_shipped_config_is_valid(path):
+def test_shipped_config_is_valid(path, dataset_roots):
     config = load(path)
     validate_config(config)
 
