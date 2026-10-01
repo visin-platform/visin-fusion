@@ -10,11 +10,22 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-01
+
+### Added
+
+- add examples to documentation
+
+### Fixed
+
+- config schema test
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/visin-platform/visin-fusion/compare/v0.1.1...v0.2.0
 ## [0.1.1] - 2026-09-30
 
 No user-facing changes.
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/visin-platform/visin-fusion/compare/v0.1.0...v0.1.1
 ## [0.1.0] - 2026-09-28
 
