@@ -1,5 +1,8 @@
 # Datasets
 
+For ZOD, Waymo, and Iseauto examples, including older archives without a manifest, follow
+[Download and train](download-and-train.md).
+
 ## From Visin
 
 ZOD, Waymo and iseAuto are on [Visin](https://app.visin.eu/datasets). Name one in a config and it is

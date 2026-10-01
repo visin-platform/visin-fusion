@@ -16,3 +16,8 @@ img.model-diagram {
   height: auto;
   border-radius: 18px;
 }
+
+/* Keep the copy action visible before a reader hovers over a code sample. */
+.md-code__button[data-md-type="copy"] {
+  opacity: 1;
+}

@@ -1,0 +1,32 @@
+{
+  "extends": "maskformer",
+  "Summary": "ZOD: maskformer rgb, one epoch",
+  "tags": [
+    "zod",
+    "maskformer",
+    "rgb",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "rgb"
+  },
+  "Dataset": {
+    "dataset_root": "$ZOD_DATA_DIR",
+    "annotation_path": "annotation_camera_only"
+  },
+  "Log": {
+    "logdir": "logs/zod/maskformer/rgb"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "MaskFormer": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

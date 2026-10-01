@@ -16,6 +16,8 @@ Five research model families share this calling convention. Their fusion points 
 - [Use as a library](library.md): installation, model API, inference, training and checkpoints.
 - [Compare models](models.md): diagrams, implementation differences and paper references.
 - [Getting started](getting-started.md): a quick library example and the sample pipeline.
+- [Download and train](download-and-train.md): ZOD, Waymo, and Iseauto examples for all four CLI stages.
+- [Training examples](training-examples.md): choose among five models and RGB, LiDAR, or fusion.
 - [Configs](configs.md) and [Datasets](datasets.md): run the pipeline on your own data.
 
 The `train` extra enables the full pipeline. Visin reporting and `visin:` datasets use the separate `visin` extra. Neither is needed to import a model.

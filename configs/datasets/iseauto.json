@@ -1,0 +1,73 @@
+{
+  "Dataset": {
+    "name": "iseauto",
+    "annotation_path": "annotation",
+    "dataset_classes": [
+      {
+        "name": "background",
+        "index": 0
+      },
+      {
+        "name": "vehicle",
+        "index": 1
+      },
+      {
+        "name": "human",
+        "index": 2
+      }
+    ],
+    "train_classes": [
+      {
+        "name": "background",
+        "index": 0,
+        "weight": 0.1,
+        "dataset_mapping": [
+          0
+        ],
+        "color": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "vehicle",
+        "index": 1,
+        "weight": 10.0,
+        "dataset_mapping": [
+          1
+        ],
+        "color": [
+          128,
+          0,
+          128
+        ]
+      },
+      {
+        "name": "human",
+        "index": 2,
+        "weight": 20.0,
+        "dataset_mapping": [
+          2
+        ],
+        "color": [
+          0,
+          255,
+          255
+        ]
+      }
+    ],
+    "transforms": {
+      "lidar_mean": [
+        0.8241,
+        0.42979,
+        0.51011
+      ],
+      "lidar_std": [
+        0.16968,
+        0.33902,
+        0.34808
+      ]
+    }
+  }
+}

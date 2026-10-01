@@ -45,6 +45,9 @@ a three-channel projected image, not a raw point cloud.
 
 ## Optional pipeline
 
+For ZOD, Waymo, and Iseauto datasets, follow [Download and train](docs/download-and-train.md):
+install, download, and run the pipeline with CLI commands.
+
 Train, test, visualize and benchmark CLFTv2 on the included sample dataset:
 
 ```bash

@@ -26,10 +26,30 @@ markdown_extensions:
   - tables
   - toc: {permalink: true}
   - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Start training:
+      - Overview: download-and-train.md
+      - Install and connect: training/setup.md
+      - Prepare a dataset:
+          - ZOD: training/datasets/zod.md
+          - Waymo: training/datasets/waymo.md
+          - Iseauto: training/datasets/iseauto.md
+      - Choose a model: training-examples.md
+      - Model configs:
+          - CLFT: training/models/clft.md
+          - CLFTv2: training/models/clftv2.md
+          - DeepLabV3+: training/models/deeplabv3plus.md
+          - MaskFormer: training/models/maskformer.md
+          - Mask2Former: training/models/mask2former.md
+      - Run and inspect results: training/run.md
+      - Customize a run: training/customize.md
   - Library API: library.md
   - User guide:
       - Configs: configs.md

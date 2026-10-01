@@ -1,0 +1,32 @@
+{
+  "extends": "clftv2",
+  "Summary": "ISEAUTO: clftv2 fusion, one epoch",
+  "tags": [
+    "iseauto",
+    "clftv2",
+    "fusion",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "fusion"
+  },
+  "Dataset": {
+    "dataset_root": "$ISEAUTO_DATA_DIR",
+    "annotation_path": "annotation"
+  },
+  "Log": {
+    "logdir": "logs/iseauto/clftv2/fusion"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "CLFTv2": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

@@ -77,6 +77,20 @@ python tools/make_config_reference.py   # regenerates docs/reference/config.md f
 mkdocs serve
 ```
 
+## Copyable training examples
+
+The model pages and downloadable JSON files are generated from
+`configs/examples/<dataset>/<model>/<mode>.json`. After changing an example:
+
+```bash
+python tools/make_training_examples.py
+python tools/make_training_examples.py --check
+```
+
+CI and docs deployment check that the displayed configs and downloads match
+their source files. Edit the source configs, rather than the generated pages
+in `docs/training/models/` or downloads in `docs/assets/configs/`.
+
 ## Architecture diagrams
 
 The six model diagrams are SVGs in `docs/assets/models/`. They stay crisp when zoomed and remain

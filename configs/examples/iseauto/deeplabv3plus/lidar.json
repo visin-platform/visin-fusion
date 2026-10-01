@@ -1,0 +1,32 @@
+{
+  "extends": "deeplabv3plus",
+  "Summary": "ISEAUTO: deeplabv3plus lidar, one epoch",
+  "tags": [
+    "iseauto",
+    "deeplabv3plus",
+    "lidar",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "lidar"
+  },
+  "Dataset": {
+    "dataset_root": "$ISEAUTO_DATA_DIR",
+    "annotation_path": "annotation"
+  },
+  "Log": {
+    "logdir": "logs/iseauto/deeplabv3plus/lidar"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "DeepLabV3Plus": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

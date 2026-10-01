@@ -1,0 +1,32 @@
+{
+  "extends": "maskformer",
+  "Summary": "ZOD: maskformer fusion, one epoch",
+  "tags": [
+    "zod",
+    "maskformer",
+    "fusion",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "fusion"
+  },
+  "Dataset": {
+    "dataset_root": "$ZOD_DATA_DIR",
+    "annotation_path": "annotation_fusion"
+  },
+  "Log": {
+    "logdir": "logs/zod/maskformer/fusion"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "MaskFormer": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

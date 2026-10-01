@@ -1,0 +1,100 @@
+{
+  "Dataset": {
+    "name": "zod",
+    "annotation_path": "annotation_fusion",
+    "dataset_classes": [
+      {
+        "name": "background",
+        "index": 0
+      },
+      {
+        "name": "ignore",
+        "index": 1
+      },
+      {
+        "name": "vehicle",
+        "index": 2
+      },
+      {
+        "name": "sign",
+        "index": 3
+      },
+      {
+        "name": "cyclist",
+        "index": 4
+      },
+      {
+        "name": "pedestrian",
+        "index": 5
+      }
+    ],
+    "train_classes": [
+      {
+        "name": "background",
+        "index": 0,
+        "weight": 0.1,
+        "dataset_mapping": [
+          0,
+          1
+        ],
+        "color": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "vehicle",
+        "index": 1,
+        "weight": 10.0,
+        "dataset_mapping": [
+          2
+        ],
+        "color": [
+          128,
+          0,
+          128
+        ]
+      },
+      {
+        "name": "sign",
+        "index": 2,
+        "weight": 17.0,
+        "dataset_mapping": [
+          3
+        ],
+        "color": [
+          255,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "human",
+        "index": 3,
+        "weight": 20.0,
+        "dataset_mapping": [
+          4,
+          5
+        ],
+        "color": [
+          0,
+          255,
+          255
+        ]
+      }
+    ],
+    "transforms": {
+      "lidar_mean": [
+        0.25258,
+        0.49281,
+        0.49566
+      ],
+      "lidar_std": [
+        0.23424,
+        0.03092,
+        0.16651
+      ]
+    }
+  }
+}

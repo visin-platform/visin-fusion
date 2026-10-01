@@ -1,5 +1,7 @@
 # Getting started
 
+For a full dataset and copyable CLI commands, follow [Download and train](download-and-train.md).
+
 ## Install from source
 
 ```bash

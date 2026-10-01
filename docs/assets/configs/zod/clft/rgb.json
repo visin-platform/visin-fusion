@@ -1,0 +1,32 @@
+{
+  "extends": "clft",
+  "Summary": "ZOD: clft rgb, one epoch",
+  "tags": [
+    "zod",
+    "clft",
+    "rgb",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "rgb"
+  },
+  "Dataset": {
+    "dataset_root": "$ZOD_DATA_DIR",
+    "annotation_path": "annotation_camera_only"
+  },
+  "Log": {
+    "logdir": "logs/zod/clft/rgb"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "CLFT": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

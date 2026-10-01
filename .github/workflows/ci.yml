@@ -164,7 +164,7 @@ jobs:
       - name: Model diagrams match their source
         run: python tools/generate_model_diagrams.py --check
       - name: Build (broken links and missing pages fail)
-        run: mkdocs build --strict
+        run: python tools/make_training_examples.py --check && mkdocs build --strict
 
   coverage:
     name: Package coverage (>90%)

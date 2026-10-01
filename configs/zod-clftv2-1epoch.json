@@ -1,0 +1,3 @@
+{
+  "extends": "./examples/zod/clftv2/fusion.json"
+}

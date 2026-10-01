@@ -1,0 +1,32 @@
+{
+  "extends": "deeplabv3plus",
+  "Summary": "WAYMO: deeplabv3plus rgb, one epoch",
+  "tags": [
+    "waymo",
+    "deeplabv3plus",
+    "rgb",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "rgb"
+  },
+  "Dataset": {
+    "dataset_root": "$WAYMO_DATA_DIR",
+    "annotation_path": "annotation"
+  },
+  "Log": {
+    "logdir": "logs/waymo/deeplabv3plus/rgb"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "DeepLabV3Plus": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}

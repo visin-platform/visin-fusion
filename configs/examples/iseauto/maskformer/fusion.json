@@ -1,0 +1,32 @@
+{
+  "extends": "maskformer",
+  "Summary": "ISEAUTO: maskformer fusion, one epoch",
+  "tags": [
+    "iseauto",
+    "maskformer",
+    "fusion",
+    "one-epoch"
+  ],
+  "CLI": {
+    "mode": "fusion"
+  },
+  "Dataset": {
+    "dataset_root": "$ISEAUTO_DATA_DIR",
+    "annotation_path": "annotation"
+  },
+  "Log": {
+    "logdir": "logs/iseauto/maskformer/fusion"
+  },
+  "General": {
+    "device": "cuda:0",
+    "epochs": 1,
+    "batch_size": 2,
+    "seed": 0,
+    "early_stop_patience": 1,
+    "max_checkpoints": 1
+  },
+  "MaskFormer": {
+    "warmup_epochs": 0,
+    "pretrained": false
+  }
+}
