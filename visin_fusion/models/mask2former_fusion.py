@@ -31,37 +31,25 @@ Remaining intentional differences from the official codebase:
 """
 
 import math
+from typing import Any
 
 import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.optimize import linear_sum_assignment
+
+from visin_fusion.models.layers import ResidualConvUnit
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class ResidualConvUnit(nn.Module):
-    """3×3 residual conv block."""
-
-    def __init__(self, features: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(features, features, 3, padding=1, bias=True)
-        self.conv2 = nn.Conv2d(features, features, 3, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.relu(x)
-        out = self.conv1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        return out + x
-
-
 def _pos_encoding_2d(h: int, w: int, d: int, device: torch.device) -> torch.Tensor:
     """Sinusoidal 2-D positional encoding → [1, H*W, d]."""
-    assert d % 4 == 0, "d_model must be divisible by 4 for 2-D pos encoding"
+    if d % 4:
+        raise ValueError(f"d_model must be divisible by 4 for 2-D positional encoding, got {d}")
     half = d // 2
     dim_t = torch.arange(half, dtype=torch.float32, device=device)
     dim_t = 10000 ** (2 * (dim_t // 2) / half)
@@ -92,8 +80,8 @@ class MSDeformAttn(nn.Module):
     Multi-Scale Deformable Self/Cross Attention.
 
     For each query the network predicts:
-      - n_heads × n_levels × n_points  2-D sampling offsets (pixel units)
-      - n_heads × n_levels × n_points  scalar attention weights (softmax'd)
+      - n_heads x n_levels x n_points  2-D sampling offsets (pixel units)
+      - n_heads x n_levels x n_points  scalar attention weights (softmax'd)
 
     Each (head, level, point) sampled feature is computed via bilinear
     interpolation (F.grid_sample), then weighted and summed.
@@ -101,7 +89,8 @@ class MSDeformAttn(nn.Module):
 
     def __init__(self, d_model: int = 256, n_levels: int = 3, n_heads: int = 8, n_points: int = 4):
         super().__init__()
-        assert d_model % n_heads == 0
+        if d_model % n_heads:
+            raise ValueError(f"d_model ({d_model}) must be divisible by n_heads ({n_heads})")
         self.d_model = d_model
         self.n_levels = n_levels
         self.n_heads = n_heads
@@ -139,6 +128,7 @@ class MSDeformAttn(nn.Module):
         spatial_shapes: torch.Tensor,  # [n_levels, 2] long (H_l, W_l)
         level_start_index: torch.Tensor,  # [n_levels] long
     ) -> torch.Tensor:  # [B, Lq, d_model]
+        """Multi-scale deformable attention of ``query`` over the flattened feature levels in ``value_flat``."""
         B, Lq, _ = query.shape
 
         value = self.value_proj(value_flat)  # [B, Lv, d]
@@ -208,10 +198,10 @@ class MSDeformAttnEncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
     def forward(self, src, reference_points, spatial_shapes, level_start_index):
+        """One encoder layer: deformable self-attention over the levels, then a feed-forward block."""
         attn_out = self.deform_attn(src, reference_points, src, spatial_shapes, level_start_index)
         src = self.norm1(src + attn_out)
-        src = self.norm2(src + self.ffn(src))
-        return src
+        return self.norm2(src + self.ffn(src))
 
 
 class MSDeformAttnPixelDecoder(nn.Module):
@@ -219,7 +209,7 @@ class MSDeformAttnPixelDecoder(nn.Module):
     Official Mask2Former pixel decoder.
 
     Steps:
-      1. Project each backbone scale to out_channels (1×1 conv + GroupNorm).
+      1. Project each backbone scale to out_channels (1x1 conv + GroupNorm).
       2. Add learnable level embeddings.
       3. Flatten + concatenate all scales → run n_encoder_layers of
          multi-scale deformable self-attention (queries = pixels, reference
@@ -354,11 +344,11 @@ class MaskedAttentionDecoderLayer(nn.Module):
         queries: torch.Tensor,  # [B, Q, d]
         memory: torch.Tensor,  # [B, HW, d]
         attn_mask: torch.Tensor,  # [B*nhead, Q, HW]  or [B, Q, HW]
-        query_pos: torch.Tensor,  # [B, Q, d] – sinusoidal query pos
-        memory_pos: torch.Tensor,  # [1, HW, d] – sinusoidal pixel pos
+        query_pos: torch.Tensor,  # [B, Q, d] - sinusoidal query pos
+        memory_pos: torch.Tensor,  # [1, HW, d] - sinusoidal pixel pos
     ) -> torch.Tensor:
-
-        # Expand attn_mask dim if needed [B, Q, HW] → [B*nhead, Q, HW]
+        """One decoder layer: masked cross-attention to the image, self-attention among queries, feed-forward."""
+        # Expand attn_mask to one mask per head if it is per image
         if attn_mask.dim() == 3 and attn_mask.shape[0] != queries.shape[0] * self.nhead:
             attn_mask = attn_mask.repeat_interleave(self.nhead, dim=0)  # [B*nhead, Q, HW]
 
@@ -379,9 +369,7 @@ class MaskedAttentionDecoderLayer(nn.Module):
         queries = self.norm2(queries + self.dropout(sa_out))
 
         # 3. FFN (pre-norm)
-        queries = self.norm3(queries + self.dropout(self.ffn(queries)))
-
-        return queries
+        return self.norm3(queries + self.dropout(self.ffn(queries)))
 
 
 class Mask2FormerDecoder(nn.Module):
@@ -470,7 +458,7 @@ class Mask2FormerDecoder(nn.Module):
             # Cycle through multi-scale memory (coarsest first, cycling)
             scale_idx = layer_idx % num_scales
             mem_feat = multi_scale_features[scale_idx]  # [B, d, h_s, w_s]
-            b_m, d_m, h_s, w_s = mem_feat.shape
+            _b_m, d_m, h_s, w_s = mem_feat.shape
 
             # Flatten memory for attention
             memory = mem_feat.flatten(2).permute(0, 2, 1)  # [B, h_s*w_s, d]
@@ -525,6 +513,8 @@ class Mask2FormerCriterion(nn.Module):
 
     Per-batch loss = final_loss + aux_weight * mean(intermediate_losses)
     """
+
+    ce_weight: torch.Tensor
 
     def __init__(
         self,
@@ -675,14 +665,14 @@ class Mask2FormerCriterion(nn.Module):
            (no re-matching per layer — matches the official implementation).
         """
         final_cls, final_masks = all_class_logits[-1], all_masks[-1]
-        B, Q, _ = final_cls.shape
+        B, _Q, _ = final_cls.shape
         _, _, h, w = final_masks.shape
         dev = final_cls.device
 
         anno_down = F.interpolate(anno.float().unsqueeze(1), size=(h, w), mode="nearest").long().squeeze(1)
 
         # ── Step 1: match on final layer ──────────────────────────────────
-        indices = []
+        indices: list[tuple] = []
         for b in range(B):
             segments = self._build_gt(anno_down[b])
             if not segments:
@@ -691,8 +681,6 @@ class Mask2FormerCriterion(nn.Module):
             gt_classes = [s[0] for s in segments]
             gt_masks_b = torch.stack([s[1] for s in segments]).to(dev)
             cost = self._cost_matrix(final_cls[b], final_masks[b], gt_classes, gt_masks_b)
-            from scipy.optimize import linear_sum_assignment
-
             row_ind, col_ind = linear_sum_assignment(cost.cpu().detach().numpy())
             indices.append((row_ind, col_ind, gt_classes, gt_masks_b))
 
@@ -705,7 +693,7 @@ class Mask2FormerCriterion(nn.Module):
         # ── Step 3: aux losses with the same indices ──────────────────────
         aux_losses = [
             self._layer_loss_with_indices(cls_l, mask_l, anno, indices)
-            for cls_l, mask_l in zip(all_class_logits[:-1], all_masks[:-1])
+            for cls_l, mask_l in zip(all_class_logits[:-1], all_masks[:-1], strict=True)
         ]
         return final_loss + self.aux_weight * torch.stack(aux_losses).mean()
 
@@ -744,8 +732,9 @@ class Mask2FormerFusion(nn.Module):
         self.num_classes = num_classes
 
         # ── Backbone ──────────────────────────────────────────────────────────
-        self.backbone = timm.create_model(backbone, pretrained=pretrained, features_only=True)
-        bb_channels = self.backbone.feature_info.channels()
+        feature_extractor: Any = timm.create_model(backbone, pretrained=pretrained, features_only=True)
+        self.backbone = feature_extractor
+        bb_channels = feature_extractor.feature_info.channels()
 
         # ── Residual fusion units (per scale, per modality) ───────────────────
         self.fusion_res_rgb = nn.ModuleList([ResidualConvUnit(c) for c in bb_channels])
@@ -801,7 +790,7 @@ class Mask2FormerFusion(nn.Module):
             raw_lidar = [self._to_bchw(f) for f in self.backbone(lidar)]
             return [
                 self.fusion_res_rgb[i](fr) + self.fusion_res_lidar[i](fl)
-                for i, (fr, fl) in enumerate(zip(raw_rgb, raw_lidar))
+                for i, (fr, fl) in enumerate(zip(raw_rgb, raw_lidar, strict=True))
             ]
         raise ValueError(f"Unknown modal: {modal!r}")
 
@@ -844,7 +833,7 @@ class Mask2FormerFusion(nn.Module):
 
         # 6. Upsample to input resolution.
         # align_corners=True pins feature corners to output corners, preventing the
-        # ~1.5-pixel left-boundary offset that align_corners=False causes at 4× scale.
+        # ~1.5-pixel left-boundary offset that align_corners=False causes at 4x scale.
         segmap = F.interpolate(segmap, size=(H, W), mode="bilinear", align_corners=True)
 
         return None, segmap, all_class_logits, all_masks

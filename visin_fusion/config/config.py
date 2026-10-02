@@ -16,6 +16,7 @@ fills in its defaults for keys still missing.
 """
 
 import copy
+import importlib
 import json
 import os
 
@@ -103,15 +104,25 @@ def _fill_defaults(config, model):
         elif isinstance(value, BaseModel) and isinstance(config[name], dict):
             _fill_defaults(config[name], value)
         elif isinstance(value, list) and isinstance(config[name], list):
-            for item, item_config in zip(value, config[name]):
+            for item, item_config in zip(value, config[name], strict=True):
                 if isinstance(item, BaseModel) and isinstance(item_config, dict):
                     _fill_defaults(item_config, item)
+
+
+def _import_plugins(config):
+    """Import the modules named in ``plugins``, so models they register are known before the config is checked."""
+    for name in config.get("plugins") or []:
+        try:
+            importlib.import_module(name)
+        except ImportError as exc:
+            raise ValueError(f"plugins: cannot import {name!r}: {exc}") from exc
 
 
 def prepare_config(config, base_dir="."):
     """A config ready for a run: extends resolved, manifest applied, default log directory,
     checked against the schema, schema defaults filled in."""
     config = resolve_extends(config, base_dir)
+    _import_plugins(config)
     _expand_dataset_root(config)
     config = apply_manifest(config)
     _normalize_mode(config)

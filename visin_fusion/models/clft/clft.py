@@ -1,3 +1,5 @@
+"""The CLFT network: a ViT encoder shared by both streams, token reassembly and residual fusion, then a head."""
+
 import timm
 import torch
 import torch.nn as nn
@@ -8,6 +10,8 @@ from visin_fusion.models.clft.reassemble import Reassemble
 
 
 class CLFT(nn.Module):
+    """The CLFT network (see ``visin_fusion.models.CLFT`` for the public wrapper)."""
+
     def __init__(
         self,
         RGB_tensor_size=None,
@@ -22,8 +26,6 @@ class CLFT(nn.Module):
         type=None,
         model_timm=None,
         pretrained=True,
-        # num_layers_encoder=24,
-        # transformer_dropout=0,
     ):
         """
         Focus on Depth
@@ -38,6 +40,13 @@ class CLFT(nn.Module):
 
         self.transformer_encoders = timm.create_model(model_timm, pretrained=pretrained)
         self.type_ = type
+        expected = getattr(getattr(self.transformer_encoders, "patch_embed", None), "img_size", None)
+        if expected is not None and tuple(expected) != tuple(RGB_tensor_size[1:]):
+            raise ValueError(
+                f"{model_timm} takes {expected[0]}x{expected[1]} inputs, but image_size is {RGB_tensor_size[1]}; "
+                f"set image_size={expected[0]} (Dataset.transforms.resize in a config) or pick a backbone for "
+                f"{RGB_tensor_size[1]}"
+            )
 
         # Register hooks
         self.activation = {}
@@ -68,6 +77,10 @@ class CLFT(nn.Module):
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
 
     def forward(self, rgb, lidar, modal="rgb"):
+        """``(depth, segmentation)``, each ``None`` when the network's type has no such head.
+
+        Depth is ``[B, 1, H, W]`` and segmentation scores ``[B, nclasses, H, W]``.
+        """
         if modal == "rgb":
             self.transformer_encoders(rgb)
             activation_result = self.activation

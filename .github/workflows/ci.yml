@@ -42,21 +42,29 @@ jobs:
         run: ruff format --check .
 
   unit:
-    name: Unit tests
+    name: Unit tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python }}
           cache: pip
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -e '.[train,visin,dev]'
+          pip install -e '.[visin,dev]'
+      - name: Types (mypy)
+        if: matrix.python == '3.12'
+        run: mypy
       - name: Unit tests with coverage
         run: coverage run -m pytest tests/unit
       - name: Keep unit coverage data
+        if: matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-unit
@@ -82,7 +90,7 @@ jobs:
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -e '.[train,visin,dev]'
+          pip install -e '.[visin,dev]'
       - name: Cache pretrained backbone weights
         uses: actions/cache@v4
         with:
@@ -144,7 +152,7 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/full"
           "$RUNNER_TEMP/full/bin/pip" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          "$RUNNER_TEMP/full/bin/pip" install "$(ls dist/*.whl)[train,visin]"
+          "$RUNNER_TEMP/full/bin/pip" install "$(ls dist/*.whl)[visin]"
           cd "$RUNNER_TEMP" && "$RUNNER_TEMP/full/bin/visin-fusion" schema > /dev/null
           "$RUNNER_TEMP/full/bin/python" -c "import visin_fusion.engine.stages.train.common, visin_fusion.integrations.visin"
 

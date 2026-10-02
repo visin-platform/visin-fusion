@@ -251,7 +251,7 @@ class XODL2DProjector:
         rows, cols = point_coords
 
         # Draw larger circles for each LiDAR point
-        for r, c in zip(rows, cols):
+        for r, c in zip(rows, cols, strict=True):
             # Get the color for this point from the colormap
             color = lidar_colored_rgb[r, c]
             # Draw a circle with radius 5 pixels (more visible)

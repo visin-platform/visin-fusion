@@ -4,15 +4,15 @@ import pytest
 import torch
 from torch import nn
 
-from visin_fusion.models import clftv2
+from visin_fusion.models import clftv2, layers
 
 
 def test_readout_layers_and_reassembly():
     tokens = torch.tensor([[[2.0, 4.0], [6.0, 8.0], [10.0, 12.0]]])
-    assert clftv2.Read_ignore(start_index=1)(tokens).tolist() == [[[6.0, 8.0], [10.0, 12.0]]]
-    assert clftv2.Read_add(start_index=1)(tokens).tolist() == [[[8.0, 12.0], [12.0, 16.0]]]
-    assert clftv2.Read_add(start_index=2)(tokens).tolist() == [[[14.0, 18.0]]]
-    assert clftv2.Read_projection(2)(tokens).shape == (1, 2, 2)
+    assert layers.Read_ignore(start_index=1)(tokens).tolist() == [[[6.0, 8.0], [10.0, 12.0]]]
+    assert layers.Read_add(start_index=1)(tokens).tolist() == [[[8.0, 12.0], [12.0, 16.0]]]
+    assert layers.Read_add(start_index=2)(tokens).tolist() == [[[14.0, 18.0]]]
+    assert layers.Read_projection(2)(tokens).shape == (1, 2, 2)
 
     spatial = torch.randn(1, 2, 2, 3)
     assert clftv2.Resample(4, 2, 3)(spatial).shape == (1, 3, 8, 12)
@@ -20,7 +20,7 @@ def test_readout_layers_and_reassembly():
     assert lazy(spatial).shape == (1, 3, 16, 24)
     assert lazy.emb_dim == 2
     assert clftv2.SpatialReassemble("ignore", 4, 2, 3)(spatial).shape == (1, 3, 8, 12)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         clftv2.Resample(3, 2, 3)
 
 

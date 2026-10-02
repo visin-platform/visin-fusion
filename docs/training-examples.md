@@ -36,4 +36,4 @@ There are 45 combinations. Each file is complete and uses a built-in model
 preset; no parent config file is required. Dataset manifests provide class
 mappings and normalization: ZOD and Waymo train four classes, Iseauto three.
 
-**Next:** [Run and inspect results](training/run.md) or [customize a run](training/customize.md).
+**Next:** [Run and inspect the outputs](running.md#outputs) or [customize a run](configs.md#customize-an-example).

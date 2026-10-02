@@ -1,4 +1,4 @@
-"""tools/make_sample_dataset.py and tools/make_manifest.py, run on the sample dataset itself."""
+"""tools/make_sample_dataset.py and visin-fusion dataset manifest, run on the sample dataset itself."""
 
 import json
 import shutil
@@ -9,8 +9,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from visin_fusion.sample import SAMPLE_DIR
+
 REPO = Path(__file__).resolve().parents[2]
-SAMPLE = REPO / "tests" / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def dataset_config(tmp_path):
@@ -52,7 +54,9 @@ def test_make_manifest_finds_splits_and_label_folders(tmp_path):
     dataset = tmp_path / "sample"
     shutil.copytree(SAMPLE, dataset)
     (dataset / "dataset.json").unlink()
-    output = run("tools/make_manifest.py", "--root", dataset, "--config", dataset_config(tmp_path)).stdout
+    output = run(
+        "-m", "visin_fusion.dataset_tools.make_manifest", "--root", dataset, "--config", dataset_config(tmp_path)
+    ).stdout
     manifest = json.loads((dataset / "dataset.json").read_text())
     assert manifest["name"] == "zod"
     assert manifest["splits"]["train"] == "train.txt"
@@ -66,5 +70,7 @@ def test_make_manifest_reports_missing_files(tmp_path):
     shutil.copytree(SAMPLE, dataset)
     frame = Path((dataset / "train.txt").read_text().split()[0]).name
     (dataset / "lidar_png" / frame).unlink()
-    output = run("tools/make_manifest.py", "--root", dataset, "--config", dataset_config(tmp_path)).stdout
+    output = run(
+        "-m", "visin_fusion.dataset_tools.make_manifest", "--root", dataset, "--config", dataset_config(tmp_path)
+    ).stdout
     assert "1 files listed by the splits are missing" in output

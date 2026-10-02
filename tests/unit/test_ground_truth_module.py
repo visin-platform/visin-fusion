@@ -1,7 +1,6 @@
 """Ground-truth rendering and its standalone CLI use real image files."""
 
 import sys
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -9,8 +8,9 @@ import pytest
 
 from visin_fusion.config.config import prepare_config
 from visin_fusion.engine.stages.visualize import ground_truth as gt
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def config_for(tmp_path):
@@ -75,7 +75,7 @@ def test_path_resolution_and_name_validation(tmp_path, monkeypatch):
     )
     assert [item[2] for item in seen] == [1, 2]
     monkeypatch.setattr(gt, "get_annotation_path", lambda path, config: path.replace("a.png", "other.png"))
-    with pytest.raises(AssertionError, match=r"names don.t match"):
+    with pytest.raises(ValueError, match="names do not match"):
         gt.process_images(None, Recorder(), ["camera/a.png"], str(tmp_path), "sample", {})
 
 

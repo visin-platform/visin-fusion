@@ -1,19 +1,18 @@
 """visin_fusion/models/registry.py:training_setup: each model's optimizer, schedule and loss."""
 
-from pathlib import Path
-
 import pytest
 import torch
 
 from visin_fusion.config.config import prepare_config
-from visin_fusion.models.registry import build_model, training_setup
+from visin_fusion.models.registry import from_config, training_setup
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def setup_for(preset, **overrides):
     config = prepare_config({"extends": preset, "Dataset": {"dataset_root": str(SAMPLE)}, **overrides})
-    model = build_model(config, pretrained=False)
+    model = from_config(config, pretrained=False)
     return config, model, training_setup(config, model, torch.device("cpu"))
 
 
@@ -65,7 +64,7 @@ def test_unknown_deeplab_schedule_is_named():
 
 
 def test_cross_entropy_uses_the_class_weights():
-    config, _, setup = setup_for("deeplabv3plus", CLI={"mode": "rgb"})
+    _config, _, setup = setup_for("deeplabv3plus", CLI={"mode": "rgb"})
     labels = torch.zeros(1, 4, 4, dtype=torch.long)
     confident_background = torch.zeros(1, 4, 4, 4)
     confident_background[:, 0] = 10

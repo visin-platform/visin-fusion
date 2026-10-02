@@ -6,7 +6,7 @@ Thanks for helping. Issues and pull requests are welcome.
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install -e '.[train,visin,dev]'
+pip install -e '.[visin,dev]'
 pytest tests/unit
 pip install pre-commit && pre-commit install   # optional: the CI checks before each commit
 ```

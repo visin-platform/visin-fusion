@@ -5,7 +5,7 @@ For every frame in the dataset's split files, the point cloud next to the camera
 folder replaced by --points, e.g. camera/000001.png -> lidar_points/000001.npy or .bin) is moved into
 the camera frame, projected with the camera intrinsics, and written as lidar_png/000001.png.
 
-    python tools/project_lidar.py --root /data/my_dataset --calibration calibration.json
+    visin-fusion dataset project-lidar --root /data/my_dataset --calibration calibration.json
 
 calibration.json (one camera for the whole dataset):
 
@@ -16,19 +16,23 @@ calibration.json (one camera for the whole dataset):
 Encoding (fixed for the whole dataset, so a value means the same distance in every frame): each
 pixel's R, G, B are the X (right), Y (down), Z (forward) camera coordinates of the nearest point that
 lands on it, mapped linearly from --x-range, --y-range, --z-range (metres) onto 1..255 and clipped.
-0 means no point. Compute the model's normalization for it with tools/dataset_stats.py.
+0 means no point. Compute the model's normalization for it with visin-fusion dataset stats.
 
 The existing datasets were encoded differently (per-image scaling), see docs/datasets.md.
 """
 
 import argparse
 import json
+import logging
 import os
 
 import numpy as np
 from PIL import Image
 
+from visin_fusion.logging_setup import configure_logging
 from visin_fusion.utils.helpers import replace_camera_folder
+
+logger = logging.getLogger(__name__)
 
 
 def load_points(path):
@@ -66,14 +70,16 @@ def encode(rows, cols, cam, width, height, ranges):
 
 
 def scaled_intrinsics(K, from_size, to_size):
+    """Camera intrinsics ``K`` for an image resized from ``from_size`` to ``to_size`` (width, height)."""
     K = np.array(K, dtype=np.float64)
     K[0] *= to_size[0] / from_size[0]
     K[1] *= to_size[1] / from_size[1]
     return K
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def main(argv=None):
+    """Command line entry point: ``visin-fusion dataset project-lidar``."""
+    parser = argparse.ArgumentParser(prog="visin-fusion dataset project-lidar", description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", required=True, help="dataset root")
     parser.add_argument("--calibration", required=True, help="calibration.json (see above)")
     parser.add_argument(
@@ -84,7 +90,8 @@ def main():
     parser.add_argument("--x-range", type=float, nargs=2, default=[-40, 40], metavar=("LOW", "HIGH"))
     parser.add_argument("--y-range", type=float, nargs=2, default=[-5, 5], metavar=("LOW", "HIGH"))
     parser.add_argument("--z-range", type=float, nargs=2, default=[0, 80], metavar=("LOW", "HIGH"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    configure_logging()
 
     with open(args.calibration) as f:
         calibration = json.load(f)
@@ -107,7 +114,7 @@ def main():
         os.makedirs(os.path.dirname(out), exist_ok=True)
         Image.fromarray(encode(rows, cols, cam, width, height, ranges)).save(out)
         written += 1
-    print(f"Wrote {written} LiDAR projections; {missing} frames had no point cloud")
+    logger.info("Wrote %d LiDAR projections; %d frames had no point cloud", written, missing)
 
 
 if __name__ == "__main__":

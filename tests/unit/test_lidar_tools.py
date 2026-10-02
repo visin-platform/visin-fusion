@@ -1,10 +1,11 @@
-"""tools/project_lidar.py and tools/dataset_stats.py on synthetic data."""
+"""visin-fusion dataset project-lidar and stats on synthetic data."""
 
 import numpy as np
 import pytest
-from dataset_stats import class_frequencies, lidar_statistics, suggested_weights
 from PIL import Image
-from project_lidar import encode, project, scaled_intrinsics
+
+from visin_fusion.dataset_tools.dataset_stats import class_frequencies, lidar_statistics, suggested_weights
+from visin_fusion.dataset_tools.project_lidar import encode, project, scaled_intrinsics
 
 K = [[100, 0, 50], [0, 100, 40], [0, 0, 1]]
 IDENTITY = np.eye(4)
@@ -34,7 +35,7 @@ def test_nearest_point_wins_a_pixel():
 def test_extrinsics_move_points_into_the_camera_frame():
     T = np.eye(4)
     T[:3, 3] = [0, 0, 5]  # the LiDAR sits 5 m behind the camera
-    rows, cols, cam = project(np.array([[0.0, 0.0, 5.0]]), K, T, 100, 80)
+    _rows, _cols, cam = project(np.array([[0.0, 0.0, 5.0]]), K, T, 100, 80)
     assert cam[0, 2] == 10.0
 
 

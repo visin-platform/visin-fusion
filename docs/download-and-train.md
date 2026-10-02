@@ -5,10 +5,10 @@ short pages so you can copy one config and run its command.
 
 | Step | Page | What you do |
 | --- | --- | --- |
-| 1 | [Install and connect](training/setup.md) | Install Fusion; optionally add a Visin pipeline key |
+| 1 | [Install](getting-started.md#1-install-and-run-the-sample) | Install Fusion with `[visin]`; optionally [connect to Visin](visin.md#setup) |
 | 2 | [ZOD](training/datasets/zod.md), [Waymo](training/datasets/waymo.md), or [Iseauto](training/datasets/iseauto.md) | Download and prepare one dataset |
 | 3 | [Choose a model](training-examples.md) | Select RGB, LiDAR, or fusion; copy or download its JSON |
-| 4 | [Run and inspect results](training/run.md) | Train, test, visualize, and benchmark |
+| 4 | [Run and inspect the outputs](running.md#outputs) | Train, test, visualize, and benchmark |
 
 ## First example
 
@@ -22,4 +22,4 @@ Use `--benchmark-device cpu` on a CPU host. With `.env` configured, Fusion
 reports to Visin; otherwise outputs remain local. All examples run one epoch
 and use separate output directories. No extra experiments repository is needed.
 
-**Want a longer experiment?** [Customize a run](training/customize.md).
+**Want a longer experiment?** [Customize a run](configs.md#customize-an-example).

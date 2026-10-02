@@ -1,14 +1,14 @@
 """stages/benchmark/common.py: one benchmark for every model."""
 
 import json
-from pathlib import Path
 
 import pytest
 import torch
 
 from visin_fusion.engine.stages.benchmark import common
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def write_config(tmp_path, preset="deeplabv3plus", **extra):

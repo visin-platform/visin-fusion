@@ -9,7 +9,7 @@ visin_fusion/data/            dataset loaders and resolvers
 visin_fusion/config/          config schema, presets, manifests and splits
 visin_fusion/integrations/    optional Visin callback
 configs/                      quickstart.json and example presets
-tools/                        sample data, dataset manifests, LiDAR projection
+tools/                        docs generators, sample builder, release and coverage scripts
 slurms/                       HPC job script
 tests/                        unit and end-to-end tests, sample dataset
 ```
@@ -17,7 +17,7 @@ tests/                        unit and end-to-end tests, sample dataset
 ## Tests
 
 ```bash
-pip install -e '.[train,visin,dev]'
+pip install -e '.[visin,dev]'
 pytest tests/unit                                  # seconds
 pytest tests/e2e --device cpu                      # every model x mode, all four stages
 pytest tests/e2e --models clftv2 --modes fusion      # one case
@@ -76,6 +76,10 @@ pip install --group docs
 python tools/make_config_reference.py   # regenerates docs/reference/config.md from the schema
 mkdocs serve
 ```
+
+Examples in the docs are tested (`tests/unit/test_docs_examples.py`). Every JSON config block that extends
+a preset must validate, and a Python block runs if the line before its fence is `<!-- doctest -->`, so mark
+only blocks that are self-contained (random tensors, `pretrained=False`).
 
 ## Copyable training examples
 

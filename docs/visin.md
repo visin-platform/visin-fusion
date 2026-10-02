@@ -9,7 +9,7 @@ package. The `visin_fusion.integrations` package adapts it to the pipeline event
 Install the optional integration and give the calling application a pipeline key:
 
 ```bash
-python -m pip install -e '.[train,visin]'
+python -m pip install -e '.[visin]'
 export VISIN_TOKEN=...                 # project's Settings → Pipeline keys in Visin
 visin check --write                    # confirm this machine can report
 ```
@@ -35,6 +35,16 @@ external file path:
 ```bash
 VISIN_ENV_FILE=/path/to/my-app/visin.env docker compose run --rm fusion-cpu -c configs/quickstart.json
 ```
+
+A key file looks like this (keep it out of version control):
+
+```dotenv title=".env"
+VISIN_URL=https://vision-api.visin.eu
+VISIN_TOKEN=replace-with-your-project-pipeline-key
+VISIN_DIR=.visin
+```
+
+`visin check --write` creates and deletes a small test run to confirm the key works. Export your credential before downloading a private dataset too.
 
 Without `VISIN_TOKEN` the pipeline keeps its local logs and sends no reports.
 

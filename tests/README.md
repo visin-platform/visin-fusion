@@ -1,7 +1,7 @@
 # Tests
 
 ```bash
-pip install -e '.[train,visin,dev]'
+pip install -e '.[visin,dev]'
 pytest                                   # everything
 pytest tests/e2e --models clftv2           # one model, all modes
 pytest tests/e2e --modes fusion          # one mode, all models
@@ -29,7 +29,7 @@ Visin reporting is checked too, chosen with `--visin`:
 | `online` | Reports go to the Visin project of `VISIN_TOKEN` (environment, current-directory `.env`, or `VISIN_ENV_FILE`); the test reads the run back. Use a test project |
 | `disabled` | Nothing is reported |
 
-## Sample dataset (`tests/data/zod_sample`)
+## Sample dataset (`visin_fusion/sample/zod_sample`)
 
 28 ZOD frames downscaled 4x (3.3 MB), in the same layout as the full dataset: `camera/`, `lidar_png/`,
 three annotation folders, and split files including all five weather test splits and the
@@ -37,5 +37,5 @@ visualization list. Rebuild it with:
 
 ```bash
 python tools/make_sample_dataset.py --source <unzipped ZOD> --splits <unzipped ZOD> \
-    --output tests/data/zod_sample   # then: python tools/make_manifest.py --root tests/data/zod_sample ...
+    --output visin_fusion/sample/zod_sample   # then: visin-fusion dataset manifest --root visin_fusion/sample/zod_sample ...
 ```

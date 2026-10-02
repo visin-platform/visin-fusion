@@ -1,9 +1,9 @@
 """End-to-end: every model trains, tests, visualizes and benchmarks on the sample dataset.
 
-Each case runs the four stage scripts as subprocesses on tests/data/zod_sample for one epoch,
+Each case runs the four stage scripts as subprocesses on visin_fusion/sample/zod_sample for one epoch,
 with all outputs in a temporary log directory. The config is written the way a user writes one:
 it extends the model's preset (visin_fusion/config/presets/), names the dataset only by its root (the rest
-comes from tests/data/zod_sample/dataset.json), and overrides a few training settings.
+comes from visin_fusion/sample/zod_sample/dataset.json), and overrides a few training settings.
 
     pytest tests/e2e                              # all models and modes, Visin offline
     pytest tests/e2e --models clftv2 --modes fusion # one model, one mode
@@ -18,11 +18,12 @@ from pathlib import Path
 
 import pytest
 
-from visin_fusion.cli import stage_command
 from visin_fusion.config.config_schema import BACKBONES
+from visin_fusion.pipeline import stage_command
+from visin_fusion.sample import SAMPLE_DIR
 
 REPO = Path(__file__).resolve().parents[2]
-SAMPLE = REPO / "tests" / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 WEATHER_CONDITIONS = ["day_fair", "day_rain", "night_fair", "night_rain", "snow"]
 VISUALIZATION_KINDS = ["segment", "overlay", "compare", "correct_only"]
 STAGE_TIMEOUT = 30 * 60  # seconds; CPU runs of the larger models are slow
@@ -80,7 +81,14 @@ def make_config(model, mode, logdir, device):
         "tags": ["e2e", model, mode],
         "Dataset": {"dataset_root": str(SAMPLE)},
         "Log": {"logdir": str(logdir)},
-        "General": {"device": device, "epochs": 1, "batch_size": 2, "early_stop_patience": 1, "max_checkpoints": 1},
+        "General": {
+            "device": device,
+            "epochs": 1,
+            "batch_size": 2,
+            "early_stop_patience": 1,
+            "max_checkpoints": 1,
+            "num_workers": 0,  # worker processes only add start-up time on a handful of frames
+        },
         # One epoch, no warmup (schedules follow General.epochs)
         section: {"warmup_epochs": 0},
     }

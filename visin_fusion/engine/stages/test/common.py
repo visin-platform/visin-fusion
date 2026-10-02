@@ -23,12 +23,13 @@ from visin_fusion.engine.metrics_calculator import MetricsCalculator
 from visin_fusion.engine.test_aggregator import test_checkpoint_and_save
 from visin_fusion.engine.testing_engine import TestingEngine
 from visin_fusion.logging_setup import configure_logging
-from visin_fusion.models.registry import build_model
+from visin_fusion.models.registry import from_config
 from visin_fusion.utils.helpers import (
     calculate_num_classes,
     calculate_num_eval_classes,
     get_checkpoint_path_with_fallback,
     get_device,
+    num_workers,
     set_seed,
 )
 from visin_fusion.utils.metrics import find_overlap_exclude_bg_ignore
@@ -50,7 +51,7 @@ OVERALL_KEYS = (
 
 def load_model(config, checkpoint, device):
     """The model with the checkpoint's weights (random init only: the weights come from the checkpoint)."""
-    model = build_model(config, pretrained=False)
+    model = from_config(config, pretrained=False)
     state = torch.load(checkpoint, map_location=device, weights_only=False)["model_state_dict"]
     model.load_state_dict(state)  # strict: a checkpoint for another model must not load
     return model.to(device).eval()
@@ -71,7 +72,11 @@ def test_checkpoint(checkpoint, config, device):
             logger.warning("%s lists no frames; skipping", split)
             continue
         loader = DataLoader(
-            dataset, batch_size=config["General"]["batch_size"], shuffle=False, num_workers=4, pin_memory=True
+            dataset,
+            batch_size=config["General"]["batch_size"],
+            shuffle=False,
+            num_workers=num_workers(config, len(dataset)),
+            pin_memory=True,
         )  # every frame: no drop_last
         results[name], _ = tester.test(loader, config["CLI"]["mode"], num_classes)
     if not results:
@@ -88,6 +93,7 @@ def test_checkpoint(checkpoint, config, device):
 
 
 def main(argv=None):
+    """Entry point of the test stage (``python -m visin_fusion.engine.stages.test.common``)."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-c", "--config", required=True, help="config file")
     parser.add_argument("--checkpoint", help="checkpoint to test (default: the best in Log.logdir)")

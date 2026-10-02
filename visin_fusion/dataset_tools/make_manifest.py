@@ -4,26 +4,30 @@
 Split files and annotation folders are found in the dataset. The name, classes, suggested training
 classes and LiDAR normalization come from a config for the dataset: one naming ``Dataset.name``,
 ``dataset_classes`` and ``train_classes`` (and optionally ``transforms.lidar_mean`` / ``lidar_std``,
-e.g. from tools/dataset_stats.py). Every frame the splits list is checked for a camera image, a LiDAR
+e.g. from visin-fusion dataset stats). Every frame the splits list is checked for a camera image, a LiDAR
 projection and each annotation.
 
-    python tools/make_manifest.py --root /data/my_dataset --config my_dataset_config.json \\
+    visin-fusion dataset manifest --root /data/my_dataset --config my_dataset_config.json \\
         --description "My dataset, 1,000 labelled frames"
 """
 
 import argparse
 import json
+import logging
 import os
 
 from PIL import Image
 
 from visin_fusion.config.dataset_manifest import FORMAT, MANIFEST
 from visin_fusion.config.splits import VISUALIZATION_SPLITS, WEATHER_TEST_SPLITS
+from visin_fusion.logging_setup import configure_logging
 from visin_fusion.utils.helpers import replace_camera_folder
 
 TRAIN_SPLITS = ("train.txt", "train_all.txt")
 VAL_SPLITS = ("validation.txt", "early_stop_valid.txt")
 LAYOUT = {"camera": "camera", "lidar": "lidar_png"}
+
+logger = logging.getLogger(__name__)
 
 
 def find_split_dir(root):
@@ -45,6 +49,7 @@ def first_existing(root, split_dir, names):
 
 
 def read_split(root, path):
+    """The frames a split file lists, relative to the dataset root."""
     with open(os.path.join(root, path)) as f:
         return [line.strip() for line in f if line.strip()]
 
@@ -69,13 +74,15 @@ def find_annotations(root, frame, preferred):
     return found
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def main(argv=None):
+    """Command line entry point: ``visin-fusion dataset manifest``."""
+    parser = argparse.ArgumentParser(prog="visin-fusion dataset manifest", description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", required=True, help="dataset root (holds camera/, lidar_png/, ...)")
     parser.add_argument("--config", required=True, help="an existing config for this dataset")
     parser.add_argument("--description", default="", help="one line about the dataset")
     parser.add_argument("--output", help=f"where to write the manifest (default: <root>/{MANIFEST})")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    configure_logging()
 
     with open(args.config) as f:
         dataset = json.load(f)["Dataset"]
@@ -122,7 +129,7 @@ def main():
         ]:
             missing.extend(os.path.relpath(p, root) for p in [path] if not os.path.exists(p))
     if missing:
-        print(f"Warning: {len(missing)} files listed by the splits are missing, e.g. {missing[:3]}")
+        logger.warning("%d files listed by the splits are missing, e.g. %s", len(missing), missing[:3])
 
     transforms = dataset.get("transforms", {})
     manifest = {
@@ -140,7 +147,7 @@ def main():
     with open(output, "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    print(f"Wrote {output}: {len(frames)} frames, splits {list(splits)}, annotations {annotations}")
+    logger.info("Wrote %s: %d frames, splits %s, annotations %s", output, len(frames), list(splits), annotations)
 
 
 if __name__ == "__main__":

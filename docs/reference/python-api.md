@@ -6,7 +6,7 @@ The public model classes are exported from `visin_fusion.models`. Their implemen
 
 | Method | Purpose |
 | --- | --- |
-| `model(rgb, lidar)` | Return unnormalized semantic logits `[B, C, H, W]`. |
+| `model(rgb, lidar)` | Return unnormalized semantic logits `[B, C, H, W]`. Inputs are `[B, 3, H, W]`; a single-stream mode ignores the other input, which may be omitted. |
 | `model.raw_forward(rgb, lidar)` | Return architecture-specific intermediate outputs. Needed for query losses. |
 | `model.segment_from_raw(raw)` | Extract dense logits from those intermediate outputs. |
 | `model.training_setup(class_weights, device="cpu", epochs=100, **options)` | Build the model's default optimizer, scheduler and loss. |
@@ -31,7 +31,7 @@ Each class also accepts `mode="rgb"` or `mode="lidar"`. `DeepLabV3Plus` calls it
 
 ## Checkpoint format
 
-`state_dict()` and `load_state_dict()` act on the underlying architecture's weights, preserving the repository's checkpoint keys. `from_pretrained` accepts either a plain state dictionary or a dictionary with `model_state_dict`. No named fusion weights are registered in this release.
+`state_dict()` and `load_state_dict()` act on the underlying architecture's weights, preserving the repository's checkpoint keys. `from_pretrained` reads with `weights_only=True` and accepts either a plain state dictionary or a dictionary with `model_state_dict`; a file holding other pickled objects is refused, so load such a file yourself and call `load_state_dict`. No named fusion weights are registered in this release.
 
 ## Pipeline adapter
 

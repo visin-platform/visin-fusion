@@ -12,8 +12,9 @@ import pytest
 
 from visin_fusion.config.config import prepare_config
 from visin_fusion.data import visin_datasets
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def sample_zip():

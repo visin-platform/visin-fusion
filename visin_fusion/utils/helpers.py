@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
+"""Shared helpers: class counts, paths of frames and checkpoints, label relabelling, checkpoint saving and pruning."""
+
 import glob
 import json
 import logging
 import os
 import random
+import re
 
 import numpy as np
 import torch
+
+from visin_fusion.config.model_info import model_info
 
 logger = logging.getLogger(__name__)
 
 
 def creat_dir(config):
+    """Create ``Log.logdir`` and its ``checkpoints`` folder if they do not exist."""
     logdir = config["Log"]["logdir"]
     if not os.path.exists(logdir):
         os.makedirs(logdir)
@@ -55,8 +61,34 @@ def set_seed(seed):
 
 
 def get_device(config):
-    """The config's device, or the CPU when CUDA is not available (e.g. a CPU-only container)."""
-    return torch.device(config["General"]["device"] if torch.cuda.is_available() else "cpu")
+    """The config's device, or the CPU when it is not available (e.g. a CPU-only container).
+
+    ``General.device`` may be ``cuda:N``, ``mps`` or ``cpu``. Falling back from a requested accelerator is
+    logged as a warning, because a run on the CPU is orders of magnitude slower.
+    """
+    requested = config["General"]["device"]
+    if requested.startswith("cuda") and not torch.cuda.is_available():
+        logger.warning("General.device is %r but CUDA is not available; using the CPU", requested)
+        return torch.device("cpu")
+    if requested.startswith("mps") and not torch.backends.mps.is_available():
+        logger.warning("General.device is %r but MPS is not available; using the CPU", requested)
+        return torch.device("cpu")
+    return torch.device(requested)
+
+
+def num_workers(config, frames=None):
+    """DataLoader workers: ``General.num_workers``, else the CPU count capped at 8.
+
+    The default is also capped by the number of batches in ``frames`` (when given): workers are separate
+    processes that each import torch, so more of them than batches only costs start-up time.
+    """
+    configured = config["General"].get("num_workers")
+    if configured is not None:
+        return configured
+    workers = min(8, os.cpu_count() or 1)
+    if frames is not None:
+        workers = min(workers, max(1, frames // config["General"]["batch_size"]))
+    return workers
 
 
 def replace_camera_folder(cam_path, folder, camera="camera"):
@@ -169,8 +201,7 @@ def draw_test_segmentation_map(outputs, config=None):
         green_map[idx] = color_list[label_num][1]
         blue_map[idx] = color_list[label_num][2]
 
-    segmented_image = np.stack([red_map, green_map, blue_map], axis=2)
-    return segmented_image
+    return np.stack([red_map, green_map, blue_map], axis=2)
 
 
 def get_all_checkpoint_paths(config, ignore_model_path=False):
@@ -180,9 +211,6 @@ def get_all_checkpoint_paths(config, ignore_model_path=False):
         config: Configuration dictionary
         ignore_model_path: If True, ignore config['General']['model_path'] and return all checkpoints
     """
-    import glob
-    import os
-
     # If model path is specified and we're not ignoring it, return just that one
     model_path = config["General"].get("model_path", "")
     if model_path != "" and not ignore_model_path:
@@ -233,8 +261,7 @@ def get_all_checkpoint_paths(config, ignore_model_path=False):
         files = [f for f in files if is_current(f)]
 
     # Sort files by epoch number
-    sorted_files = sorted(files, key=get_checkpoint_num)
-    return sorted_files
+    return sorted(files, key=get_checkpoint_num)
 
 
 def current_training_uuid(epochs_dir):
@@ -261,8 +288,6 @@ def belongs_to_run(epoch_data, training_uuid):
 
 def get_best_checkpoint_path(config):
     """Find the current run's checkpoint with the best validation mIoU."""
-    import re
-
     logdir = config["Log"]["logdir"]
     epochs_dir = os.path.join(logdir, "epochs")
 
@@ -334,11 +359,13 @@ def get_checkpoint_path_with_fallback(config):
 def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None, scheduler=None):
     """Save a checkpoint: weights, optimizer and (so a resumed run continues it) the LR schedule."""
     creat_dir(config)
-    if epoch_uuid:
-        filename = f"epoch_{epoch}_{epoch_uuid}.pth"
-    else:
-        filename = f"checkpoint_{epoch}.pth"
-    state = {"epoch": epoch, "model_state_dict": model.state_dict(), "optimizer_state_dict": optimizer.state_dict()}
+    filename = f"epoch_{epoch}_{epoch_uuid}.pth" if epoch_uuid else f"checkpoint_{epoch}.pth"
+    state = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "model_info": model_info(config),
+    }
     if scheduler is not None:
         state["scheduler_state_dict"] = scheduler.state_dict()
     torch.save(state, os.path.join(config["Log"]["logdir"], "checkpoints", filename))
@@ -350,10 +377,6 @@ def manage_checkpoints_by_miou(config, log_dir):
     Only deletes .pth checkpoint files, preserving JSON files for analysis and testing.
     """
     max_checkpoints = config["General"].get("max_checkpoints", 10)
-    import glob
-    import json
-    import os
-
     checkpoint_dir = os.path.join(log_dir, "checkpoints")
     epochs_dir = os.path.join(log_dir, "epochs")
 
@@ -434,6 +457,8 @@ def manage_checkpoints_by_miou(config, log_dir):
 
 
 class EarlyStopping:
+    """Stops training after ``General.early_stop_patience`` epochs without improvement."""
+
     def __init__(self, config):
         self.patience = config["General"]["early_stop_patience"]
         self.config = config
@@ -442,6 +467,7 @@ class EarlyStopping:
         self.count = 0
 
     def __call__(self, valid_param, epoch, model, optimizer, epoch_uuid=None):
+        """Record this epoch's value (lower is better); sets ``early_stop_trigger`` once patience runs out."""
         if self.min_param is None:
             self.min_param = valid_param
         elif valid_param >= self.min_param:

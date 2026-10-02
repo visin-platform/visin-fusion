@@ -48,6 +48,16 @@ one with `Dataset.annotation_path`.
 ZOD, Waymo and iseAuto are available at [app.visin.eu/datasets](https://app.visin.eu/datasets) in
 this layout.
 
+## Looking at the annotations
+
+Annotation images store class numbers (0, 1, 2, ...) as pixel values, so any image viewer shows them as black. To check a dataset by eye, render the annotations in the training classes' colors:
+
+```bash
+visin-fusion dataset preview --root /data/my_dataset --frames 8 --output preview/
+```
+
+Each `preview/<frame>_preview.png` shows the camera image, its annotation in color, and the two blended, with a legend of every class and its share of the frame. Values that no training class maps are drawn gray: training treats them as background. Choose frames with `--split val` (or a split file) and a different folder with `--annotation-path`.
+
 ## The manifest
 
 `dataset.json` describes the dataset, so a config only has to point at it:
@@ -74,12 +84,12 @@ this layout.
 The first annotation folder is the default. Test sets can have any names; each is evaluated and
 reported separately, and their average is the overall result.
 
-Write one with `tools/make_manifest.py`. It finds the splits and annotation folders, takes the name,
+Write one with `visin-fusion dataset manifest`. It finds the splits and annotation folders, takes the name,
 classes and normalization from an existing config for the dataset, and checks that every frame the
 splits list has its camera image, LiDAR projection and annotations:
 
 ```bash
-python tools/make_manifest.py --root /data/my_dataset --config my_config.json \
+visin-fusion dataset manifest --root /data/my_dataset --config my_config.json \
     --description "My dataset, 1,000 labelled frames"
 ```
 
@@ -88,11 +98,11 @@ warning names the file.
 
 ## LiDAR projections for your own data
 
-`tools/project_lidar.py` turns point clouds (`.npy` or KITTI-style `.bin`, beside the camera images in a
+`visin-fusion dataset project-lidar` turns point clouds (`.npy` or KITTI-style `.bin`, beside the camera images in a
 `lidar_points/` folder) into `lidar_png/`, given the camera intrinsics and the LiDAR-to-camera transform:
 
 ```bash
-python tools/project_lidar.py --root /data/my_dataset --calibration calibration.json
+visin-fusion dataset project-lidar --root /data/my_dataset --calibration calibration.json
 ```
 
 Each pixel holds the camera-frame X (right), Y (down) and Z (forward) of the nearest point that lands on
@@ -102,8 +112,8 @@ ranges are the same for every frame, so a value means the same distance everywhe
 Then compute the normalization the model needs, and suggested class weights:
 
 ```bash
-python tools/dataset_stats.py --root /data/my_dataset           # print
-python tools/dataset_stats.py --root /data/my_dataset --write   # store in dataset.json
+visin-fusion dataset stats --root /data/my_dataset           # print
+visin-fusion dataset stats --root /data/my_dataset --write   # store in dataset.json
 ```
 
 !!! warning "The existing datasets use three different encodings"
@@ -117,7 +127,7 @@ python tools/dataset_stats.py --root /data/my_dataset --write   # store in datas
     | ZOD | converter not in this repository | 0 |
 
     Keep this in mind when transferring a model between datasets. Their `lidar_mean` / `lidar_std`
-    were computed over the pixels that have a point, as `tools/dataset_stats.py` does.
+    were computed over the pixels that have a point, as `visin-fusion dataset stats` does.
 
 ## Without a manifest
 

@@ -5,6 +5,7 @@ Check for documentation drift: python tools/make_training_examples.py --check
 """
 
 import argparse
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,66 +18,98 @@ MODELS = {
 }
 
 
+DATASETS = {"zod": "ZOD", "waymo": "Waymo", "iseauto": "Iseauto"}
+MODES = {"rgb": "RGB", "lidar": "LiDAR", "fusion": "Fusion"}
+DIFFERING = ("Summary", "tags", "CLI", "Dataset", "Log")
+
+
+def load(model, dataset, mode):
+    """The checked-in example config as text and as data."""
+    text = (ROOT / "configs/examples" / dataset / model / f"{mode}.json").read_text()
+    return text, json.loads(text)
+
+
+def check_only_expected_keys_differ(model):
+    """The page says the files differ in a few keys; fail if a model's examples differ elsewhere."""
+    _, reference = load(model, "zod", "fusion")
+    for dataset in DATASETS:
+        for mode in MODES:
+            _, config = load(model, dataset, mode)
+            for key in set(reference) | set(config):
+                if key not in DIFFERING and reference.get(key) != config.get(key):
+                    raise SystemExit(f"{model}/{dataset}/{mode}.json differs from zod/fusion in {key!r}")
+
+
+def model_page(model, title):
+    """One complete example, a table of every download, and what changes between them."""
+    check_only_expected_keys_differ(model)
+    text, _ = load(model, "zod", "fusion")
+    lines = [
+        f"# {title} examples",
+        "",
+        "Each example is a complete JSON file with one epoch, batch size 2, and no pretrained weight download.",
+        "[Prepare your dataset](../../download-and-train.md) first, then activate `.venv` and run commands",
+        "from the Fusion checkout.",
+        "",
+        "## The config",
+        "",
+        f"ZOD with both camera and LiDAR (`configs/examples/zod/{model}/fusion.json`):",
+        "",
+        f'```json title="configs/examples/zod/{model}/fusion.json"',
+        *text.rstrip().splitlines(),
+        "```",
+        "",
+        "## Other datasets and inputs",
+        "",
+        "Download the file for your dataset and input. Save it under any name and pass it to `-c`.",
+        "",
+        "| Dataset | Camera only | LiDAR only | Camera + LiDAR |",
+        "| --- | --- | --- | --- |",
+    ]
+    for dataset, label in DATASETS.items():
+        links = " | ".join(
+            f"[{mode}.json](../../assets/configs/{dataset}/{model}/{mode}.json){{ download }}" for mode in MODES
+        )
+        lines.append(f"| {label} (`${dataset.upper()}_DATA_DIR`) | {links} |")
+    lines += [
+        "",
+        "The files differ only in these keys:",
+        "",
+        "| Key | Values |",
+        "| --- | --- |",
+        "| `CLI.mode` | `rgb`, `lidar`, or `fusion` |",
+        "| `Dataset.dataset_root` | `$ZOD_DATA_DIR`, `$WAYMO_DATA_DIR`, or `$ISEAUTO_DATA_DIR`: "
+        "export the folder you prepared |",
+        "| `Dataset.annotation_path` | ZOD: `annotation_camera_only`, `annotation_lidar_only`, "
+        "`annotation_fusion`; Waymo and Iseauto: `annotation` |",
+        f"| `Log.logdir` | `logs/<dataset>/{model}/<mode>`, so runs do not overwrite each other |",
+        "| `Summary`, `tags` | the run's name and labels in Visin |",
+        "",
+        "## Run",
+        "",
+        '```bash title="Run all four stages"',
+        f"visin-fusion run -c configs/examples/zod/{model}/fusion.json --upload --benchmark-device cuda",
+        "```",
+        "",
+        "On a CPU host, replace `cuda` with `cpu`. `--upload` enables prediction-image uploads when Visin reporting",
+        "is configured. One epoch is a pipeline check, not an accuracy baseline. `extends` names a built-in model",
+        "preset, so no parent config file is required.",
+        "",
+        "**Next:** [Run and inspect the outputs](../../running.md#outputs) or "
+        "[customize a run](../../configs.md#customize-an-example).",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def artifacts():
     """Produce model pages and matching downloads from the checked-in configs."""
     for model, title in MODELS.items():
-        lines = [
-            f"# {title} examples",
-            "",
-            "Select a dataset and input mode below. Each example is a complete JSON file",
-            "with one epoch, batch size 2, and no pretrained weight download.",
-            "",
-            "[Prepare your dataset](../setup.md#next-prepare-a-dataset) first, then",
-            "activate `.venv` and run commands from the Fusion checkout.",
-            "",
-        ]
-        for dataset in ("zod", "waymo", "iseauto"):
-            label = "ZOD" if dataset == "zod" else dataset.capitalize()
-            lines += [
-                f'=== "{label}"',
-                "",
-                f"    Export `{dataset.upper()}_DATA_DIR` using the [{label} setup](../datasets/{dataset}.md).",
-                "",
-            ]
-            for mode in ("rgb", "lidar", "fusion"):
+        for dataset in DATASETS:
+            for mode in MODES:
                 relative = f"{dataset}/{model}/{mode}.json"
-                source = ROOT / "configs/examples" / relative
-                content = source.read_text()
-                download = ROOT / "docs/assets/configs" / relative
-                yield download, content
-                lines += [
-                    f'    === "{mode.upper() if mode != "fusion" else "Fusion"}"',
-                    "",
-                    f"        Save as `configs/examples/{relative}` or use the file already in the checkout.",
-                    "",
-                    f"        [Download JSON](../../assets/configs/{relative}){{ .md-button download }}",
-                    "",
-                    f'        ```json title="configs/examples/{relative}"',
-                ]
-                lines += ["        " + line for line in content.rstrip().splitlines()]
-                lines += [
-                    "        ```",
-                    "",
-                    '        ```bash title="Run all four stages"',
-                    "        visin-fusion run \\",
-                    f"          -c configs/examples/{relative} \\",
-                    "          --upload --benchmark-device cuda",
-                    "        ```",
-                    "",
-                ]
-        lines += [
-            "On a CPU host, replace `cuda` with `cpu`. `--upload` enables prediction-image",
-            "uploads when Visin reporting is configured. One epoch is a pipeline check, not",
-            "an accuracy baseline.",
-            "",
-            "Copied or downloaded configs can be saved under any filename: change `-c` to",
-            "that path. `extends` names a built-in model preset, so no parent config file",
-            "is required. Keep the dataset environment variable exported.",
-            "",
-            "**Next:** [Run selected stages](../run.md) or [customize a run](../customize.md).",
-            "",
-        ]
-        yield ROOT / f"docs/training/models/{model}.md", "\n".join(lines)
+                yield ROOT / "docs/assets/configs" / relative, load(model, dataset, mode)[0]
+        yield ROOT / f"docs/training/models/{model}.md", model_page(model, title)
 
 
 def main():

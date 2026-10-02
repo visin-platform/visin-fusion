@@ -18,17 +18,18 @@ from torch.utils.data import DataLoader
 
 from visin_fusion.config.config import load_config
 from visin_fusion.data.dataset_png import DatasetPNG
-from visin_fusion.engine.callbacks import configured_callbacks
+from visin_fusion.engine.callbacks import RunEnd, RunStart, configured_callbacks
 from visin_fusion.engine.epoch_ids import training_uuid_for_run
 from visin_fusion.engine.metrics_calculator import MetricsCalculator
 from visin_fusion.engine.training_engine import TrainingEngine
 from visin_fusion.logging_setup import configure_logging
-from visin_fusion.models.registry import build_model, training_setup
+from visin_fusion.models.registry import from_config, training_setup
 from visin_fusion.utils.helpers import (
     calculate_num_classes,
     calculate_num_eval_classes,
     get_device,
     get_model_path,
+    num_workers,
     set_seed,
 )
 from visin_fusion.utils.metrics import find_overlap_exclude_bg_ignore
@@ -108,6 +109,7 @@ def resume(config, model, setup, device):
 
 
 def main(argv=None):
+    """Entry point of the train stage (``python -m visin_fusion.engine.stages.train.common``)."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-c", "--config", required=True, help="config file")
     parser.add_argument(
@@ -132,34 +134,37 @@ def main(argv=None):
     num_eval_classes = calculate_num_eval_classes(config, num_classes)
     logger.info("Classes: %s (%s evaluated)", num_classes, num_eval_classes)
 
-    model = build_model(config).to(device)
+    model = from_config(config).to(device)
     setup = training_setup(config, model, device)
     metrics = MetricsCalculator(config, num_eval_classes, find_overlap_exclude_bg_ignore)
     start_epoch = resume(config, model, setup, device)
 
     batch_size = config["General"]["batch_size"]
+    train_set = DatasetPNG(config, "train", config["Dataset"]["train_split"])
+    valid_set = DatasetPNG(config, "val", config["Dataset"]["val_split"])
+    train_workers, valid_workers = num_workers(config, len(train_set)), num_workers(config, len(valid_set))
     train_loader = DataLoader(
-        DatasetPNG(config, "train", config["Dataset"]["train_split"]),
+        train_set,
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
         pin_memory=True,
-        num_workers=8,
-        persistent_workers=True,
+        num_workers=train_workers,
+        persistent_workers=train_workers > 0,
     )
     valid_loader = DataLoader(
-        DatasetPNG(config, "val", config["Dataset"]["val_split"]),
+        valid_set,
         batch_size=batch_size,
         shuffle=False,
         drop_last=False,
         pin_memory=True,
-        num_workers=8,
-        persistent_workers=True,
+        num_workers=valid_workers,
+        persistent_workers=valid_workers > 0,
     )  # every validation frame, in order
 
     events = configured_callbacks(config)
     state = {"training_uuid": None}
-    events.emit("on_run_start", config=config, state=state)
+    events.emit(RunStart(config=config, state=state))
     # A reporting callback may have chosen it; otherwise the same rules, from the local logs
     training_uuid = state["training_uuid"] or training_uuid_for_run(config)[0]
     engine = TrainingEngine(
@@ -168,10 +173,10 @@ def main(argv=None):
     try:
         engine.train_full(train_loader, valid_loader, num_classes, start_epoch=start_epoch)
     except BaseException as error:
-        events.emit("on_run_end", config=config, error=error)
+        events.emit(RunEnd(config=config, error=error))
         raise
     else:
-        events.emit("on_run_end", config=config, error=None)
+        events.emit(RunEnd(config=config))
 
 
 if __name__ == "__main__":

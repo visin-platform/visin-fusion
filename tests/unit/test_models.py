@@ -4,18 +4,16 @@ shape, in every mode.
 Random weights (``pretrained: false``), so nothing is downloaded; one CPU forward pass each.
 """
 
-from pathlib import Path
-
 import pytest
 import torch
 
 from visin_fusion.config.config import prepare_config
 from visin_fusion.config.config_schema import BACKBONES
-from visin_fusion.engine.advanced_model_builder import AdvancedModelBuilder
-from visin_fusion.models.registry import Segmenter, build_model, segment
+from visin_fusion.models.registry import from_config
+from visin_fusion.sample import SAMPLE_DIR
 from visin_fusion.utils.helpers import calculate_num_classes
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 CASES = [
     (preset, mode)
     for preset in ("clft", "clftv2", "maskformer", "mask2former", "deeplabv3plus")
@@ -33,7 +31,7 @@ def config_for(preset, mode):
 
 
 def build(config):
-    return build_model(config)
+    return from_config(config)
 
 
 @pytest.mark.parametrize(("preset", "mode"), CASES, ids=[f"{p}-{m}" for p, m in CASES])
@@ -44,7 +42,7 @@ def test_forward_pass(preset, mode):
     model = build(config).eval()
     rgb, lidar = torch.randn(1, 3, size, size), torch.randn(1, 3, size, size)
     with torch.no_grad():
-        output = segment(model, config, rgb, lidar)
+        output = model(rgb, lidar)
     assert output.shape == (1, calculate_num_classes(config), size, size)
     assert torch.isfinite(output).all()
 
@@ -56,18 +54,11 @@ def test_checkpoint_missing_layers_does_not_load(tmp_path):
     del state[next(iter(state))]
     torch.save({"model_state_dict": state, "epoch": 0}, tmp_path / "clftv2.pth")
     with pytest.raises(RuntimeError, match="Missing key"):
-        AdvancedModelBuilder(config, "cpu").load_checkpoint(build(config), tmp_path / "clftv2.pth")
-
-
-def test_segmenter_gives_one_calling_convention():
-    config = config_for("deeplabv3plus", "rgb")
-    rgb = torch.randn(1, 3, 64, 64)
-    with torch.no_grad():
-        assert Segmenter(build(config).eval(), config)(rgb, rgb).shape == (1, 4, 64, 64)
+        build(config).load_state_dict(torch.load(tmp_path / "clftv2.pth", weights_only=True)["model_state_dict"])
 
 
 def test_pretrained_override_leaves_the_config_alone():
     config = config_for("deeplabv3plus", "rgb")
     config["DeepLabV3Plus"]["pretrained"] = True
-    build_model(config, pretrained=False)
+    from_config(config, pretrained=False)
     assert config["DeepLabV3Plus"]["pretrained"] is True

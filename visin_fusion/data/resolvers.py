@@ -11,6 +11,11 @@ def register_resolver(prefix, resolver):
 
 
 def resolve_root(root):
+    """The folder a ``Dataset.dataset_root`` names.
+
+    ``prefix:name`` goes to the resolver registered for the prefix (``visin:zod`` downloads); anything else is
+    returned as it is.
+    """
     if not isinstance(root, str) or ":" not in root:
         return root
     prefix = root.split(":", 1)[0]

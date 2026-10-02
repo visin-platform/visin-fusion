@@ -1,6 +1,6 @@
 # Prepare Iseauto
 
-[Install Fusion](../setup.md) first. Run from the checkout with `.venv` active.
+[Install Fusion](../../getting-started.md#1-install-and-run-the-sample) first, with `[visin]` for the download (`python -m pip install 'visin-fusion[visin]'`). Run from a source checkout, since the example configs live there.
 
 ## Download and prepare
 
@@ -12,7 +12,7 @@ export VISIN_DATA_DIR=./data
 ISEAUTO_DATA_DIR="$(visin download iseauto)"
 export ISEAUTO_DATA_DIR
 if [ ! -f "$ISEAUTO_DATA_DIR/dataset.json" ]; then
-  python tools/make_manifest.py \
+  visin-fusion dataset manifest \
     --root "$ISEAUTO_DATA_DIR" \
     --config configs/datasets/iseauto.json
 fi
@@ -43,7 +43,7 @@ visin-fusion run -c configs/examples/iseauto/clftv2/fusion.json --upload --bench
 ```
 
 Use `--benchmark-device cpu` on a CPU host. Outputs go to
-`logs/iseauto/clftv2/fusion/`. [Configure Visin](../setup.md#optional-connect-to-visin)
+`logs/iseauto/clftv2/fusion/`. [Configure Visin](../../visin.md#setup)
 to upload the run, metrics, and images. One epoch is a pipeline check.
 
 In a new terminal, activate `.venv` and repeat the preparation block; downloaded

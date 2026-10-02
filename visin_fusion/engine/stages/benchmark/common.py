@@ -23,9 +23,9 @@ import psutil
 import torch
 
 from visin_fusion.config.config import load_config
-from visin_fusion.engine.callbacks import configured_callbacks
+from visin_fusion.engine.callbacks import Benchmark, configured_callbacks
 from visin_fusion.logging_setup import configure_logging
-from visin_fusion.models.registry import Segmenter, build_model, model_section
+from visin_fusion.models.registry import from_config, model_section
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ def find_config_files(paths):
 
 
 def setup_device(device):
+    """The torch device for ``auto``, ``cpu`` or ``cuda[:N]``; CUDA falls back to the CPU when unavailable."""
     if device == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.startswith("cuda") and not torch.cuda.is_available():
@@ -72,6 +73,7 @@ def latest_epoch(logdir):
 
 
 def epoch_info(epoch_file):
+    """``(epoch, epoch UUID, training UUID)`` recorded in an epoch log file."""
     with open(epoch_file) as f:
         data = json.load(f)
     logger.info("Using epoch file: %s", epoch_file)
@@ -79,6 +81,7 @@ def epoch_info(epoch_file):
 
 
 def count_parameters(model):
+    """Total and trainable parameter counts of ``model``, as a dict."""
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return {
@@ -89,14 +92,14 @@ def count_parameters(model):
     }
 
 
-def count_flops(segmenter, rgb, lidar):
+def count_flops(model, rgb, lidar):
     """FLOPs of one forward pass, with thop, or fvcore if thop fails."""
     info = {"flops_available": False, "total_flops": None, "flops_giga": None, "flops_method": None}
     attempts = []
     if profile is not None:
-        attempts.append(("thop", lambda: profile(segmenter, inputs=(rgb, lidar), verbose=False)[0]))
+        attempts.append(("thop", lambda: profile(model, inputs=(rgb, lidar), verbose=False)[0]))
     if FlopCountAnalysis is not None:
-        attempts.append(("fvcore", lambda: FlopCountAnalysis(segmenter, (rgb, lidar)).total()))
+        attempts.append(("fvcore", lambda: FlopCountAnalysis(model, (rgb, lidar)).total()))
     for method, count in attempts:
         try:
             with torch.no_grad():
@@ -109,26 +112,26 @@ def count_flops(segmenter, rgb, lidar):
     return info
 
 
-def measure_inference(segmenter, rgb, lidar, device, num_runs, warmup_runs):
+def measure_inference(model, rgb, lidar, device, num_runs, warmup_runs):
     """Time ``num_runs`` forward passes after ``warmup_runs``, and the memory in use.
 
     gpu_memory_* sample memory still allocated after each pass (mostly the weights); the peak
     during the passes, activations included, is gpu_memory_peak_mb.
     """
-    segmenter.eval()  # inference mode for timing, whatever ran before
+    model.eval()  # inference mode for timing, whatever ran before
     cuda = device.type == "cuda"
     baseline_gpu = torch.cuda.memory_allocated() / 2**20 if cuda else 0
     baseline_ram = psutil.Process().memory_info().rss / 2**20
     with torch.no_grad():
         for _ in range(warmup_runs):
-            segmenter(rgb, lidar)
+            model(rgb, lidar)
         if cuda:
             torch.cuda.synchronize()
             torch.cuda.reset_peak_memory_stats()
         times, gpu, ram = [], [], []
         for _ in range(num_runs):
             start = time.perf_counter()
-            segmenter(rgb, lidar)
+            model(rgb, lidar)
             if cuda:
                 torch.cuda.synchronize()
             times.append(time.perf_counter() - start)
@@ -165,6 +168,7 @@ def measure_inference(segmenter, rgb, lidar, device, num_runs, warmup_runs):
 
 
 def system_info():
+    """CPU, memory, Python, PyTorch and GPU details of this machine, as reported with the benchmark."""
     info = {
         "cpu_count": psutil.cpu_count(logical=False),
         "cpu_count_logical": psutil.cpu_count(logical=True),
@@ -209,9 +213,8 @@ def benchmark_config(config_path, device, num_runs=100, warmup_runs=10):
         device,
         "=" * 60,
     )
-    model = build_model(config, pretrained=False).to(device)
-    # eval() on the wrapper too: profilers restore the training flag of the module they are given
-    segmenter = Segmenter(model, config).eval()
+    model = from_config(config, pretrained=False).to(device)
+    model.eval()
     size = config["Dataset"]["transforms"]["resize"]
     rgb, lidar = torch.randn(1, 3, size, size, device=device), torch.randn(1, 3, size, size, device=device)
 
@@ -223,8 +226,8 @@ def benchmark_config(config_path, device, num_runs=100, warmup_runs=10):
         "dataset": config["Dataset"]["name"],
         "image_size": size,
         "pretrained": model_section(config).get("pretrained", True),
-        **count_flops(segmenter, rgb, lidar),
-        **measure_inference(segmenter, rgb, lidar, device, num_runs, warmup_runs),
+        **count_flops(model, rgb, lidar),
+        **measure_inference(model, rgb, lidar, device, num_runs, warmup_runs),
         "config_path": config_path,
         "device": str(device),
         "device_type": device.type,
@@ -242,8 +245,8 @@ def benchmark_config(config_path, device, num_runs=100, warmup_runs=10):
     return result
 
 
-def save_results(results, logdir, epoch, epoch_uuid, training_uuid, output_path=None):
-    """Write the results (JSON and a CSV summary) and report them to Visin."""
+def save_results(results, logdir, epoch, epoch_uuid, training_uuid, output_path=None, config=None):
+    """Write the results (JSON and a CSV summary) and report them to the callbacks ``config`` names."""
     if output_path is None:
         os.makedirs(os.path.join(logdir, "benchmark"), exist_ok=True)
         output_path = os.path.join(logdir, "benchmark", f"benchmark_results_{time.strftime('%Y%m%d_%H%M%S')}.json")
@@ -265,18 +268,14 @@ def save_results(results, logdir, epoch, epoch_uuid, training_uuid, output_path=
     pd.DataFrame(results).to_csv(output_path.replace(".json", "_summary.csv"), index=False)
     logger.info("\nBenchmark results saved to: %s", output_path)
 
-    configured_callbacks().emit(
-        "on_benchmark",
-        results=results,
-        system_info=info,
-        training_uuid=training_uuid,
-        epoch=epoch,
-        epoch_uuid=epoch_uuid,
+    configured_callbacks(config).emit(
+        Benchmark(results=results, system_info=info, training_uuid=training_uuid, epoch=epoch, epoch_uuid=epoch_uuid)
     )
     return output_path
 
 
 def main(argv=None):
+    """Entry point of the benchmark stage (``python -m visin_fusion.engine.stages.benchmark.common``)."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-c", "--config", nargs="+", required=True, help="config files or directories of them")
     parser.add_argument("-d", "--device", default="auto", help="auto, cpu, cuda, cuda:0, ...")
@@ -306,10 +305,11 @@ def main(argv=None):
                 logger.error("Benchmarking %s on %s failed: %s: %s", config_path, device, type(e).__name__, e)
                 failed.append(config_path)
 
-    logdir = load_config(configs[0])["Log"]["logdir"]
+    config = load_config(configs[0])
+    logdir = config["Log"]["logdir"]
     epoch, epoch_uuid, training_uuid = epoch_info(args.epoch_file) if args.epoch_file else latest_epoch(logdir)
     if results:
-        save_results(results, logdir, epoch, epoch_uuid, training_uuid, args.output)
+        save_results(results, logdir, epoch, epoch_uuid, training_uuid, args.output, config)
     if failed:
         sys.exit(
             f"Benchmarking failed for {len(failed)} of {len(configs) * len(devices)} config/device pairs: "

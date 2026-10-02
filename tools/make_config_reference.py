@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 from visin_fusion.config.config_schema import (
-    BACKBONES,
+    BUILTIN_BACKBONES,
     CLI,
     SCHEMA_VERSION,
     Config,
@@ -84,7 +84,8 @@ def render():
     ]
     lines += ["| `CLI.backbone` | Model section | Modes |", "| --- | --- | --- |"]
     lines += [
-        f"| `{b}` | `{section}` | {', '.join(f'`{m}`' for m in modes)} |" for b, (section, modes) in BACKBONES.items()
+        f"| `{b}` | `{section}` | {', '.join(f'`{m}`' for m in modes)} |"
+        for b, (section, modes) in BUILTIN_BACKBONES.items()
     ]
     for title, model, intro in SECTIONS:
         lines += [

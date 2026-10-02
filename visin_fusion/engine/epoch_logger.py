@@ -1,3 +1,5 @@
+"""Per-epoch result files in ``<Log.logdir>/epochs``: one JSON file per epoch, named by the epoch's UUID."""
+
 import json
 import logging
 import math

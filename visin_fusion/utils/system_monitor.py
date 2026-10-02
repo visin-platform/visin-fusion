@@ -148,8 +148,8 @@ def get_epoch_system_snapshot():
                         gpu_data["power_watts"] = round(power, 1)
                         gpu_data["power_limit_watts"] = round(power_limit, 1)
                         gpu_data["power_percent"] = round((power / power_limit) * 100, 1)
-                    except Exception:  # optional readings; not every GPU reports them
-                        pass
+                    except Exception as exc:
+                        logger.debug("GPU %s does not report power: %s", i, exc)
 
                     # Clock speeds
                     try:
@@ -157,15 +157,15 @@ def get_epoch_system_snapshot():
                         mem_clock = pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_MEM)
                         gpu_data["clock_sm_mhz"] = sm_clock
                         gpu_data["clock_memory_mhz"] = mem_clock
-                    except Exception:  # optional readings; not every GPU reports them
-                        pass
+                    except Exception as exc:
+                        logger.debug("GPU %s does not report clock speeds: %s", i, exc)
 
                     # Fan speed
                     try:
                         fan = pynvml.nvmlDeviceGetFanSpeed(handle)
                         gpu_data["fan_speed_percent"] = fan
-                    except Exception:  # optional readings; not every GPU reports them
-                        pass
+                    except Exception as exc:
+                        logger.debug("GPU %s does not report fan speed: %s", i, exc)
 
                 except Exception as e:
                     gpu_data["nvml_error"] = str(e)

@@ -44,14 +44,28 @@ from visin_fusion.utils.helpers import get_training_uuid_from_logs
 
 logger = logging.getLogger(__name__)
 
-load_environment()
-
 # The deployment this project reports to. The visin package has no default
 # address, on purpose; this project keeps one, so a job that sets only
 # VISIN_TOKEN goes on reporting where it always has.
 DEFAULT_VISIN_URL = "https://vision-api.visin.eu"
-if os.getenv("VISIN_TOKEN") and not (os.getenv("VISIN_URL") or os.getenv("VISIN_API_URL")):
-    os.environ["VISIN_URL"] = DEFAULT_VISIN_URL
+
+_environment_ready = False
+
+
+def prepare_environment() -> None:
+    """Load the caller's key file and default ``VISIN_URL``, once, before the first report.
+
+    Importing this module changes nothing; the functions below that talk to Visin call this first, so the
+    environment is set up when a stage starts reporting, not when something imports the integration.
+    """
+    global _environment_ready
+    if _environment_ready:
+        return
+    load_environment()
+    if os.getenv("VISIN_TOKEN") and not (os.getenv("VISIN_URL") or os.getenv("VISIN_API_URL")):
+        os.environ["VISIN_URL"] = DEFAULT_VISIN_URL
+    _environment_ready = True
+
 
 # The UUID an epoch of a run always has. Checkpoint file names carry it
 # (epoch_{n}_{uuid}.pth), which is how the later scripts find the epoch.
@@ -72,6 +86,7 @@ def start_training_run(config: dict[str, Any], *, model: str) -> tuple[visin.Run
       and so does General.reset_lr: its epochs start again from 0, and a run
       keeps the first values recorded for an epoch number.
     """
+    prepare_environment()
     training_uuid, resumed_locally = training_uuid_for_run(config)
 
     dataset = config["Dataset"]["name"]
@@ -98,6 +113,7 @@ def attach_to_training(log_dir: str, *, epoch_uuid: str | None = None) -> visin.
     status stays whatever training left it at. Returns a run that reports
     nothing when the logs name no training.
     """
+    prepare_environment()
     training_uuid = training_uuid_for_epoch(log_dir, epoch_uuid) if epoch_uuid else None
     training_uuid = training_uuid or get_training_uuid_from_logs(log_dir)[0]
     if not training_uuid:
@@ -135,5 +151,6 @@ def report_benchmark(
     if not training_uuid:
         logger.info("Visin: the benchmark names no training run; not reporting it")
         return
+    prepare_environment()
     with visin.Run.attach(training_uuid, mark_status=False) as run:
         run.log_benchmark(results, system_info, epoch=epoch, epoch_uuid=epoch_uuid)

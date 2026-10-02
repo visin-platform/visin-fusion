@@ -9,6 +9,12 @@ from torch import nn
 
 @dataclass
 class TrainingSetup:
+    """What the training engine needs from a model.
+
+    An optimizer, an optional schedule, a loss ``(raw_outputs, logits, labels) -> scalar``, an optional
+    gradient-clipping norm and whether to use mixed precision.
+    """
+
     optimizer: torch.optim.Optimizer
     scheduler: object | None
     loss: Callable
@@ -17,16 +23,19 @@ class TrainingSetup:
 
 
 def weighted_cross_entropy(class_weights, device):
+    """A loss callable that applies class-weighted cross-entropy to the dense logits."""
     ce = nn.CrossEntropyLoss(weight=torch.as_tensor(class_weights, dtype=torch.float32)).to(device)
     return lambda outputs, segmap, labels: ce(segmap, labels)
 
 
 def warmup_then(optimizer, warmup_epochs, start_factor, main):
+    """A linear warmup from ``start_factor`` for ``warmup_epochs``, then the ``main`` schedule."""
     warmup = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=start_factor, total_iters=warmup_epochs)
     return torch.optim.lr_scheduler.SequentialLR(optimizer, [warmup, main], [warmup_epochs])
 
 
 def query_schedule(optimizer, options, epochs):
+    """The polynomial (or step) schedule after warmup used by the query models."""
     warmup = options.get("warmup_epochs", 10)
     post_warmup = max(1, epochs - warmup)
     if options.get("lr_scheduler", "poly") == "step":
@@ -42,6 +51,7 @@ def query_schedule(optimizer, options, epochs):
 
 
 def backbone_slower(model, lr):
+    """AdamW with the backbone at a tenth of ``lr``, the rest at ``lr``."""
     backbone = list(model.backbone.parameters())
     ids = {id(p) for p in backbone}
     rest = [p for p in model.parameters() if id(p) not in ids]
@@ -49,6 +59,7 @@ def backbone_slower(model, lr):
 
 
 def deeplab_schedule(optimizer, options, epochs):
+    """The scheduler named by ``options['lr_scheduler']`` (step, cosine, exponential or plateau), or ``None``."""
     spec = options.get("lr_scheduler")
     if not spec:
         return None

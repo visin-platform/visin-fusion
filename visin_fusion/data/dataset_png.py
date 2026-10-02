@@ -119,24 +119,21 @@ class DatasetPNG(Dataset):
 
         png_path = get_lidar_path(cam_path, self.config)
 
-        # Load LiDAR projection from PNG only if not in RGB-only mode
+        # RGB-only runs get a black stand-in instead of reading the LiDAR projection
         rgb_only = self.config.get("CLI", {}).get("mode") == "rgb"
-        if rgb_only:
-            # For RGB-only mode, create a dummy LiDAR image
-            lidar_pil = Image.new("RGB", rgb.size, (0, 0, 0))
-        else:
-            # Load LiDAR projection from PNG
-            lidar_pil = self.load_lidar_png(png_path)
+        lidar_pil = Image.new("RGB", rgb.size, (0, 0, 0)) if rgb_only else self.load_lidar_png(png_path)
 
         # Validate filenames match
         rgb_name = os.path.splitext(os.path.basename(cam_path))[0]
         # Only validate annotation name match if we loaded real annotations (not dummy)
         if anno_path and os.path.exists(anno_path):
             anno_name = os.path.splitext(os.path.basename(anno_path))[0]
-            assert rgb_name == anno_name, "rgb and anno input not matching"
+            if rgb_name != anno_name:
+                raise ValueError(f"rgb and annotation names do not match: {rgb_name} vs {anno_name}")
         if not rgb_only:
             png_name = os.path.splitext(os.path.basename(png_path))[0]
-            assert rgb_name == png_name, "rgb and png input not matching"
+            if rgb_name != png_name:
+                raise ValueError(f"rgb and LiDAR names do not match: {rgb_name} vs {png_name}")
 
         # Keep full image (no cropping)
         rgb_orig = rgb.copy()
@@ -206,5 +203,4 @@ class DatasetPNG(Dataset):
             PIL.Image: LiDAR projection as PIL image
         """
         # Load PNG image
-        img = Image.open(png_path)
-        return img
+        return Image.open(png_path)

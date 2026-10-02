@@ -22,6 +22,7 @@ The sections of a config and its name.
 | `Summary` | str | `""` | Run name, e.g. in Visin |
 | `description` | str | `""` | What this config or preset is for |
 | `tags` | list of str | `[]` |  |
+| `plugins` | list of str |  | Modules to import before the config is checked, so they can register models (register_model) |
 | `CLI` | section | **required** |  |
 | `General` | section | **required** |  |
 | `Log` | section | **required** |  |
@@ -38,7 +39,7 @@ The model and its inputs.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `backbone` | `clft`, `clftv2`, `maskformer`, `mask2former`, `deeplabv3plus` | **required** | The model |
+| `backbone` | str | **required** | The model: clft, clftv2, maskformer, mask2former, deeplabv3plus, or one added with register_model |
 | `mode` | `rgb`, `lidar`, `fusion`, `cross_fusion` | **required** | Inputs: camera (rgb), LiDAR (lidar) or both (fusion; cross_fusion is the same) |
 
 ## General
@@ -51,6 +52,8 @@ Training settings.
 | `epochs` | int | **required** |  |
 | `batch_size` | int | **required** |  |
 | `seed` | int | `0` |  |
+| `accumulate_batches` | int | `1` | Batches whose gradients are averaged per optimizer step: effective batch size = batch_size x this |
+| `num_workers` | int (optional) |  | DataLoader worker processes; 0 loads in the main process. Default: CPU count, at most 8 and at most one per batch |
 | `resume_training` | bool | `False` | Continue from the latest checkpoint in Log.logdir |
 | `reset_lr` | bool | `False` | When resuming, start the learning-rate schedule again |
 | `early_stop_patience` | int | **required** | Epochs without a better validation mIoU before stopping |
@@ -58,6 +61,7 @@ Training settings.
 | `model_path` | str | `""` | Checkpoint to start from; empty for the latest in Log.logdir |
 | `transfer_learning` | bool | `False` | Start from model_path trained on other classes |
 | `source_classes` | list (optional) |  | The classes model_path was trained on |
+| `callbacks` | list of str |  | Callback classes to load in every stage, as "package.module:ClassName", built with the config |
 | `create_new_training` | bool | `False` | Start a new Visin run even when resuming |
 
 ## Log

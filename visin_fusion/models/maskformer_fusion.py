@@ -15,12 +15,12 @@ Architecture:
      official TransformerPredictor.
   4. At inference the final-layer query outputs are merged into a dense
      segmentation map (official semantic_inference formula):
-       segmap[c] = Σ_q  softmax(class_logits_q)[c]  ×  sigmoid(mask_q)
+       segmap[c] = Σ_q  softmax(class_logits_q)[c]  x  sigmoid(mask_q)
      where the no-object column is simply dropped, not used to gate.
 
 Loss (MaskFormerCriterion / SetCriterion):
   Matching cost : class CE + focal-loss (mask) + dice (mask)
-  Training loss : weight_class × CE  +  weight_mask × focal  +  weight_dice × dice
+  Training loss : weight_class x CE  +  weight_mask x focal  +  weight_dice x dice
   Applied to final AND all auxiliary decoder layer outputs.
   Default weights match the paper (class=2, mask=5, dice=5, eos=0.1).
 
@@ -35,11 +35,15 @@ codebase.
 """
 
 import math
+from typing import Any
 
 import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.optimize import linear_sum_assignment
+
+from visin_fusion.models.layers import ResidualConvUnit
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Loss helpers — faithful to facebookresearch/MaskFormer criterion.py
@@ -92,23 +96,6 @@ def _batch_focal_cost(
     return (torch.einsum("qn,mn->qm", fp, gt_flat) + torch.einsum("qn,mn->qm", fn, 1.0 - gt_flat)) / hw
 
 
-class ResidualConvUnit(nn.Module):
-    """3×3 residual conv block — matches clftv2.py."""
-
-    def __init__(self, features: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(features, features, 3, padding=1, bias=True)
-        self.conv2 = nn.Conv2d(features, features, 3, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.relu(x)
-        out = self.conv1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        return out + x
-
-
 class PixelDecoder(nn.Module):
     """FPN-style pixel decoder (multi-scale → single high-res feature map).
 
@@ -120,7 +107,7 @@ class PixelDecoder(nn.Module):
     def __init__(self, in_channels_list: list[int], out_channels: int = 256):
         super().__init__()
 
-        # 1×1 lateral projections for each scale
+        # 1x1 lateral projections for each scale
         self.lateral_convs = nn.ModuleList([nn.Conv2d(c, out_channels, 1) for c in in_channels_list])
         # Output refinement
         self.output_conv = nn.Sequential(
@@ -136,7 +123,7 @@ class PixelDecoder(nn.Module):
         Returns:
             [B, out_channels, H_0, W_0] at the finest resolution.
         """
-        laterals = [conv(f) for conv, f in zip(self.lateral_convs, features)]
+        laterals = [conv(f) for conv, f in zip(self.lateral_convs, features, strict=True)]
 
         # Top-down path: start from coarsest, upsample and add
         out = laterals[-1]
@@ -206,9 +193,9 @@ class TransformerDecoder(nn.Module):
         Returns:
             all_class_logits : list[Tensor[B, Q, C+1]], length = num_layers
             all_masks        : list[Tensor[B, Q, H, W]], length = num_layers
-            Index -1 is the final (main) output; 0..−2 are auxiliary.
+            Index -1 is the final (main) output; 0..-2 are auxiliary.
         """
-        b, c, h, w = pixel_features.shape
+        b, _c, h, w = pixel_features.shape
 
         # Add 2-D positional encoding (interpolated to actual feature map size)
         pos = F.interpolate(self.pos_embed, size=(h, w), mode="bilinear", align_corners=False)  # [1, C, h, w]
@@ -241,7 +228,7 @@ class MaskFormerCriterion(nn.Module):
 
     Faithful to facebookresearch/MaskFormer SetCriterion.  For each image:
       1. Extract GT segments from the semantic annotation map.
-      2. Build a [Q × M] cost matrix (class CE + focal mask + dice mask).
+      2. Build a [Q x M] cost matrix (class CE + focal mask + dice mask).
       3. Run Hungarian algorithm to find optimal query → GT assignment.
       4. Classification CE over ALL queries (matched → GT class,
          unmatched → no-object), normalised by Q via F.cross_entropy.
@@ -257,6 +244,8 @@ class MaskFormerCriterion(nn.Module):
       loss  : class=2, mask=5,  dice=5
       eos_coef (no-object weight in class CE) = 0.1
     """
+
+    ce_weight: torch.Tensor
 
     def __init__(
         self,
@@ -328,12 +317,12 @@ class MaskFormerCriterion(nn.Module):
     ) -> torch.Tensor:  # [Q, M]
         dev = cls_logits_q.device
 
-        # ── Class cost: −p(gt_class) ──────────────────────────────────────────
+        # ── Class cost: -p(gt_class) ──────────────────────────────────────────
         cls_probs = F.softmax(cls_logits_q, dim=-1)  # [Q, C+1]
         gt_idx = torch.tensor(gt_classes, device=dev)  # [M]
         class_cost = -cls_probs[:, gt_idx]  # [Q, M]
 
-        # ── Mask costs (vectorised Q×M) ───────────────────────────────────────
+        # ── Mask costs (vectorised QxM) ───────────────────────────────────────
         pred_flat = pred_masks_q.flatten(1)  # [Q, HW]
         pred_sig = pred_flat.sigmoid()  # [Q, HW]
         gt_flat = gt_masks.flatten(1)  # [M, HW]
@@ -390,15 +379,13 @@ class MaskFormerCriterion(nn.Module):
 
             # ── Hungarian matching ────────────────────────────────────────────
             cost = self._cost_matrix(class_logits[b], pred_masks[b], gt_classes, gt_masks)
-            from scipy.optimize import linear_sum_assignment
-
             row_ind, col_ind = linear_sum_assignment(cost.cpu().detach().numpy())
             num_matched += len(row_ind)
 
             # ── Classification loss (official: single CE over all queries) ────
             # Build a target-class vector: matched → GT class, rest → no-object.
             tgt_classes = torch.full((Q,), self.num_classes, dtype=torch.long, device=dev)
-            for r, c in zip(row_ind, col_ind):
+            for r, c in zip(row_ind, col_ind, strict=True):
                 tgt_classes[r] = gt_classes[c]
             total_loss = total_loss + self.weight_class * F.cross_entropy(
                 class_logits[b],
@@ -407,14 +394,13 @@ class MaskFormerCriterion(nn.Module):
             )
 
             # ── Collect matched mask pairs (focal + dice computed below) ──────
-            for r, c in zip(row_ind, col_ind):
+            for r, c in zip(row_ind, col_ind, strict=True):
                 all_pm.append(pred_masks[b, r].flatten().unsqueeze(0))  # [1, HW]
                 all_gm.append(gt_masks[c].flatten().unsqueeze(0))  # [1, HW]
 
         # ── Mask losses: sigmoid focal + dice, normalised by num_matched ──────
         # Matches facebookresearch/MaskFormer criterion.py loss_masks():
-        #   loss_mask = sigmoid_focal_loss(src, tgt, num_masks)
-        #   loss_dice = dice_loss(src, tgt, num_masks)
+        # (a sigmoid focal loss and a dice loss on each matched mask, both normalized by the number of masks)
         if all_pm:
             n = float(max(1, num_matched))
             pm_cat = torch.cat(all_pm, dim=0)  # [num_matched, HW]
@@ -490,13 +476,14 @@ class MaskFormerFusion(nn.Module):
         self.num_classes = num_classes
 
         # ── Backbone ──────────────────────────────────────────────────────────
-        self.backbone = timm.create_model(backbone, pretrained=pretrained, features_only=True)
-        bb_channels = self.backbone.feature_info.channels()
+        feature_extractor: Any = timm.create_model(backbone, pretrained=pretrained, features_only=True)
+        self.backbone = feature_extractor
+        bb_channels = feature_extractor.feature_info.channels()
 
         # ── Residual fusion units (residual_average strategy) ─────────────────
         # One ResidualConvUnit per backbone scale, per modality stream.
         # Mirrors the design in clftv2.py:
-        #   fused_i = res_rgb_i(feat_rgb_i) + res_lidar_i(feat_lidar_i) + prev
+        # Mirrors clftv2.py: per level, camera and LiDAR residual units plus the previous level.
         self.fusion_res_rgb = nn.ModuleList([ResidualConvUnit(c) for c in bb_channels])
         self.fusion_res_lidar = nn.ModuleList([ResidualConvUnit(c) for c in bb_channels])
 
@@ -549,7 +536,7 @@ class MaskFormerFusion(nn.Module):
             raw_lidar = [self._to_bchw(f) for f in self.backbone(lidar)]
             return [
                 self.fusion_res_rgb[i](fr) + self.fusion_res_lidar[i](fl)
-                for i, (fr, fl) in enumerate(zip(raw_rgb, raw_lidar))
+                for i, (fr, fl) in enumerate(zip(raw_rgb, raw_lidar, strict=True))
             ]
 
         raise ValueError(f"Unknown modal: {modal!r}")
@@ -578,12 +565,12 @@ class MaskFormerFusion(nn.Module):
         class_logits = all_class_logits[-1]  # final layer
         masks = all_masks[-1]
         # Auxiliary outputs from intermediate layers (for deep supervision)
-        aux_outputs = list(zip(all_class_logits[:-1], all_masks[:-1]))
+        aux_outputs = list(zip(all_class_logits[:-1], all_masks[:-1], strict=True))
 
         # 4. Merge — official MaskFormer semantic_inference formula
         #   (Cheng et al., NeurIPS 2021, mask_former_model.py):
         #
-        #     semseg[c] = Σ_q  softmax(cls_logits)[q, c]  ×  sigmoid(mask)[q]
+        #     semseg[c] = Σ_q  softmax(cls_logits)[q, c]  x  sigmoid(mask)[q]
         #
         #   The no-object column is dropped (sliced off) but NOT used to gate the
         #   remaining class probabilities.  After training, matched queries have

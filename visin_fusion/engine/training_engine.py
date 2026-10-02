@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from visin_fusion.engine.callbacks import Events
+from visin_fusion.engine.callbacks import Checkpoint, EpochEnd, Events
 from visin_fusion.engine.epoch_logger import log_epoch_results
 from visin_fusion.utils.helpers import EarlyStopping, manage_checkpoints_by_miou, relabel_annotation, save_model_dict
 from visin_fusion.utils.system_monitor import get_epoch_system_snapshot
@@ -55,27 +55,42 @@ class TrainingEngine:
             segmap = self.model.segment_from_raw(outputs)
             return segmap, self.setup.loss(outputs, segmap, labels)
 
+    def _optimizer_step(self):
+        """Unscale, clip, step and update the scaler for the gradients accumulated so far."""
+        if self.setup.clip_grad_norm is not None:
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.setup.clip_grad_norm)
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
     def train_epoch(self, dataloader, num_classes):
-        """One training epoch; returns its metrics."""
+        """One training epoch; returns its metrics.
+
+        With ``General.accumulate_batches`` = N the optimizer steps once per N batches, on their average
+        gradient (the last step of an epoch averages the batches that remain), so the effective batch is
+        N times ``General.batch_size`` at the memory of one.
+        """
         self.model.train()
         accumulators = self.metrics_calc.create_accumulators(self.device)
         total_loss = 0.0
+        batches = len(dataloader)
+        accumulate = max(1, self.config["General"].get("accumulate_batches", 1))
         progress_bar = tqdm(dataloader)
-        for batch in progress_bar:
+        for index, batch in enumerate(progress_bar):
+            group_start = index - index % accumulate
+            group_size = min(accumulate, batches - group_start)
+            if index == group_start:
+                self.optimizer.zero_grad(set_to_none=True)
             rgb, lidar, labels = self._batch(batch)
-            self.optimizer.zero_grad(set_to_none=True)
             segmap, loss = self._loss(rgb, lidar, labels)
             self.metrics_calc.update_accumulators(accumulators, segmap, labels, num_classes)
             total_loss += loss.item()
 
-            self.scaler.scale(loss).backward()
-            if self.setup.clip_grad_norm is not None:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.setup.clip_grad_norm)
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            self.scaler.scale(loss / group_size).backward()
+            if index == group_start + group_size - 1:
+                self._optimizer_step()
             progress_bar.set_description(f"Train loss: {loss:.4f}")
-        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, len(dataloader))
+        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, batches)
 
     def validate_epoch(self, dataloader, num_classes):
         """One validation epoch, with the training loss; returns its metrics."""
@@ -127,7 +142,7 @@ class TrainingEngine:
 
             logger.info("Saving model checkpoint...")
             self._save(epoch, epoch_uuid)
-            self.events.emit("on_checkpoint", epoch=epoch, epoch_uuid=epoch_uuid, config=self.config)
+            self.events.emit(Checkpoint(config=self.config, epoch=epoch, epoch_uuid=epoch_uuid))
             manage_checkpoints_by_miou(self.config, self.log_dir)  # keep the best max_checkpoints
 
             # Early stopping on the validation mIoU (higher is better; negated for min-tracking)
@@ -138,7 +153,7 @@ class TrainingEngine:
         # The final checkpoint under the epoch it holds
         logger.info("Saving final model checkpoint...")
         self._save(max(last_epoch, 0), last_epoch_uuid)
-        self.events.emit("on_checkpoint", epoch=max(last_epoch, 0), epoch_uuid=last_epoch_uuid, config=self.config)
+        self.events.emit(Checkpoint(config=self.config, epoch=max(last_epoch, 0), epoch_uuid=last_epoch_uuid))
         self.writer.close()
         logger.info("Training Complete")
 
@@ -170,12 +185,13 @@ class TrainingEngine:
             system_info=system_info,
         )
         self.events.emit(
-            "on_epoch_end",
-            epoch=epoch,
-            epoch_uuid=epoch_uuid,
-            results=results,
-            learning_rate=lr,
-            epoch_time=epoch_time,
-            config=self.config,
+            EpochEnd(
+                config=self.config,
+                epoch=epoch,
+                epoch_uuid=epoch_uuid,
+                results=results,
+                learning_rate=lr,
+                epoch_time=epoch_time,
+            )
         )
         return epoch_uuid

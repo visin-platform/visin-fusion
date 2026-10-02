@@ -7,9 +7,10 @@ import pytest
 
 from visin_fusion.config import splits
 from visin_fusion.config.dataset_manifest import apply_manifest
+from visin_fusion.sample import SAMPLE_DIR
 from visin_fusion.utils.helpers import get_annotation_path, get_lidar_path, replace_camera_folder
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def write_manifest(root, **fields):

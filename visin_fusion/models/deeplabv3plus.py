@@ -14,29 +14,9 @@ from torchvision.models import ResNet101_Weights, resnet101
 logger = logging.getLogger(__name__)
 
 
-class ResidualConvUnit(nn.Module):
-    def __init__(self, features):
-        super().__init__()
-
-        self.conv1 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.conv2 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        """Forward pass.
-        Args:
-            x (tensor): input
-        Returns:
-            tensor: output
-        """
-        out = self.relu(x)
-        out = self.conv1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        return out + x
-
-
 class Fusion(nn.Module):
+    """Late fusion of camera and LiDAR feature maps: their average plus the previous stage."""
+
     def __init__(self, resample_dim, fusion_strategy="residual_average"):
         super().__init__()
         self.resample_dim = resample_dim
@@ -46,6 +26,7 @@ class Fusion(nn.Module):
             raise ValueError(f"Only 'residual_average' fusion strategy is supported, got: {self.fusion_strategy}")
 
     def forward(self, rgb, lidar, previous_stage=None, modal="cross_fusion"):
+        """The fused map; only the ``cross_fusion`` modality is supported."""
         if modal == "cross_fusion":
             # Simple residual average fusion: just average the features
             fused_feat = (rgb + lidar) / 2
@@ -104,6 +85,7 @@ class ASPP(nn.Module):
         )
 
     def forward(self, x):
+        """Five parallel branches (1x1, three dilated 3x3, global pooling), concatenated and projected."""
         size = x.size()[2:]
 
         # Apply all branches
@@ -115,9 +97,7 @@ class ASPP(nn.Module):
 
         # Concatenate and project
         out = torch.cat([feat1, feat2, feat3, feat4, feat5], dim=1)
-        out = self.project(out)
-
-        return out
+        return self.project(out)
 
 
 class Decoder(nn.Module):
@@ -147,6 +127,7 @@ class Decoder(nn.Module):
         self.classifier = nn.Conv2d(256, num_classes, 1)
 
     def forward(self, x, low_level_feat, input_size):
+        """Class scores at the input size, from ASPP features and the low-level features."""
         # Process low-level features
         low_level_feat = self.low_level_conv(low_level_feat)
 
@@ -161,9 +142,7 @@ class Decoder(nn.Module):
         x = self.classifier(x)
 
         # Upsample to input size
-        x = F.interpolate(x, size=input_size, mode="bilinear", align_corners=True)
-
-        return x
+        return F.interpolate(x, size=input_size, mode="bilinear", align_corners=True)
 
 
 class DeepLabV3Plus(nn.Module):
@@ -177,10 +156,7 @@ class DeepLabV3Plus(nn.Module):
 
         # Load ResNet backbone
         if backbone == "resnet101":
-            if pretrained:
-                resnet = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
-            else:
-                resnet = resnet101(weights=None)
+            resnet = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1) if pretrained else resnet101(weights=None)
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
 
@@ -215,6 +191,7 @@ class DeepLabV3Plus(nn.Module):
         return layer4
 
     def forward(self, x):
+        """Class scores ``[B, num_classes, H, W]`` for one image."""
         input_size = x.size()[2:]
 
         # Encoder
@@ -232,9 +209,7 @@ class DeepLabV3Plus(nn.Module):
         x = self.aspp(x)
 
         # Decoder
-        x = self.decoder(x, low_level_feat, input_size)
-
-        return x
+        return self.decoder(x, low_level_feat, input_size)
 
 
 class DeepLabV3PlusLateFusion(nn.Module):
@@ -268,6 +243,7 @@ class DeepLabV3PlusLateFusion(nn.Module):
         self.fusion = Fusion(resample_dim, fusion_strategy=fusion_strategy)
 
     def forward(self, rgb, lidar, modality="cross_fusion"):
+        """``(fused, rgb, lidar)`` predictions for ``cross_fusion``; ``(prediction, None, None)`` for one stream."""
         if modality == "cross_fusion":
             input_size = rgb.size()[2:]
 

@@ -16,7 +16,7 @@ visualizations/
 **/.env
 
 # Datasets and paper material are mounted or archived, not built in; the small sample dataset
-# in tests/data is kept for the quick start and the tests
+# in visin_fusion/sample is kept for the quick start and the tests
 paper*/
 
 # docker compose mounts

@@ -9,7 +9,7 @@ MODEL ?= clftv2
 MODES ?= fusion
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format test e2e coverage docs check clean
+.PHONY: help install lint typecheck format test e2e coverage docs check clean
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-9s %s\n", $$1, $$2}'
@@ -17,12 +17,15 @@ help: ## List the targets
 install: ## Create venv with every dev tool, and install the git hooks
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -e '.[train,visin,dev]'
+	$(VENV)/bin/pip install -e '.[visin,dev]'
 	$(VENV)/bin/pre-commit install
 
 lint: ## Lint and check formatting (ruff)
 	$(BIN)ruff check .
 	$(BIN)ruff format --check .
+
+typecheck: ## Type-check the annotated modules (mypy)
+	$(BIN)mypy
 
 format: ## Fix formatting and the lint findings ruff can fix
 	$(BIN)ruff format .
@@ -42,7 +45,7 @@ docs: ## Build the docs site, failing on any warning
 	$(BIN)python tools/generate_model_diagrams.py --check
 	$(BIN)mkdocs build --strict
 
-check: lint test docs ## What CI checks, without the end-to-end runs
+check: lint typecheck test docs ## What CI checks, without the end-to-end runs
 	@echo "all checks passed"
 
 clean: ## Remove build, test and docs output

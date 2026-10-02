@@ -11,6 +11,8 @@ import os
 import re
 import uuid
 
+from visin_fusion.utils.helpers import get_model_path, get_training_uuid_from_logs
+
 logger = logging.getLogger(__name__)
 
 _EPOCH_NS = uuid.uuid5(uuid.NAMESPACE_DNS, "epochs.visin")
@@ -60,8 +62,6 @@ def training_uuid_for_run(config):
       General.reset_lr: its epochs start again from 0, and reusing the UUID would give them the
       epoch UUIDs (and checkpoint names) of the earlier run's epochs.
     """
-    from visin_fusion.utils.helpers import get_model_path, get_training_uuid_from_logs
-
     general = config["General"]
     fresh = general.get("create_new_training") or general.get("transfer_learning") or general.get("reset_lr")
     training_uuid = None

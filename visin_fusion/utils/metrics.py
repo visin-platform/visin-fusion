@@ -35,7 +35,7 @@ def find_overlap_exclude_bg_ignore(n_classes, output, anno):
 
     area_label = torch.histc(anno.float(), bins=num_eval_classes, min=0.5, max=n_classes - 0.5)
 
-    # Union = TP + FP + FN
+    # The union is the true positives plus the false positives and false negatives.
     area_union = area_pred + area_label - area_overlap
     area_union = torch.clamp(area_union, min=1e-6)
 
@@ -55,7 +55,7 @@ def store_predictions_for_ap(output_seg, anno, all_predictions, all_targets, eva
     probs = torch.softmax(output_seg, dim=1)  # [batch, classes, H, W]
     preds = torch.argmax(output_seg, dim=1)  # [batch, H, W]
 
-    for cls_name, train_idx in zip(eval_classes, eval_indices):
+    for cls_name, train_idx in zip(eval_classes, eval_indices, strict=True):
         cls_probs = probs[:, train_idx].flatten()
         cls_targets = (anno == train_idx).flatten()
         relevant = (preds == train_idx).flatten() | cls_targets

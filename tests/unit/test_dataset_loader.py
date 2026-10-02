@@ -8,8 +8,9 @@ import torch
 
 from visin_fusion.config.config import prepare_config
 from visin_fusion.data.dataset_png import DatasetPNG
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 
 
 def config_for(mode="cross_fusion", **transforms):
@@ -86,3 +87,16 @@ def test_random_crop_supports_128_pixel_input():
     sample = item(config, "train")
     assert sample["rgb"].shape == (3, 128, 128)
     assert sample["anno"].shape == (128, 128)
+
+
+def test_loading_frames_does_not_import_the_models():
+    """DataLoader workers import the dataset module in every process; the model stack would only slow them."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, visin_fusion.data.dataset_png;"
+        "print(sorted(m for m in ('timm', 'visin_fusion.models.api') if m in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "[]"

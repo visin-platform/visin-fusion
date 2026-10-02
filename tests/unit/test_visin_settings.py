@@ -1,6 +1,7 @@
 """Visin credentials belong to the calling application, not the installed package."""
 
 import os
+import subprocess
 import sys
 
 import pytest
@@ -64,3 +65,22 @@ def test_token_detection_without_optional_dotenv(tmp_path, monkeypatch):
     assert settings.pipeline_key_present()
     path.write_text("VISIN_TOKEN=\n")
     assert not settings.pipeline_key_present()
+
+
+def test_importing_the_integration_changes_no_environment(tmp_path):
+    pytest.importorskip("visin")
+    (tmp_path / ".env").write_text("VISIN_MARKER=loaded\n")
+    code = (
+        "import os; os.environ['VISIN_TOKEN'] = 'x'; os.environ.pop('VISIN_URL', None);"
+        "import visin_fusion.integrations.visin as v;"
+        "print(os.environ.get('VISIN_URL'), os.environ.get('VISIN_MARKER'));"
+        "v.prepare_environment();"
+        "print(os.environ.get('VISIN_URL'), os.environ.get('VISIN_MARKER'))"
+    )
+    env = {k: val for k, val in os.environ.items() if not k.startswith("VISIN_")}
+    out = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True, check=True
+    )
+    before, after = out.stdout.splitlines()[-2:]
+    assert before == "None None"
+    assert after == "https://vision-api.visin.eu loaded"

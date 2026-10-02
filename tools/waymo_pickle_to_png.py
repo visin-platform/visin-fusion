@@ -38,8 +38,8 @@ LiDAR Normalization (from training config):
     python -m tools.waymo_pickle_to_png --input /path/to/file.pkl --output /path/to/output/dir
 
 Output Files (per pickle file):
-    lidar_png/filename.png              - Combined 3-channel RGB PNG (for training - matches ZOD format) [ALWAYS CREATED]
-    lidar_png_visualize/filename_overlay.png    - Camera image with LiDAR projection overlay for alignment verification [--visualize]
+    lidar_png/filename.png              - Combined 3-channel RGB PNG (for training, ZOD format) [ALWAYS CREATED]
+    lidar_png_visualize/filename_overlay.png    - Camera image with the LiDAR overlay, to check alignment [--visualize]
 """
 
 import argparse
@@ -111,7 +111,8 @@ class WaymoL2DProjector:
             camera_coord = camera_coord[mask, 1:3]  # u, v coordinates
             return points3d, camera_coord
         raise ValueError(
-            f"No pre-computed camera coordinates found in {pickle_path}. CLFT approach requires camera_coordinates in pickle file."
+            f"No pre-computed camera coordinates found in {pickle_path}. "
+            "The CLFT approach requires camera_coordinates in the pickle file."
         )
 
     def normalize_lidar_points(self, points3d):
@@ -469,7 +470,8 @@ def main():
         "--input",
         "-i",
         default="waymo_dataset/splits_clft/all.txt",
-        help="Input: text file with camera paths (default: waymo_dataset/splits_clft/all.txt), directory containing pickle files, or single pickle file",
+        help="Input: a text file of camera paths (default: waymo_dataset/splits_clft/all.txt), "
+        "a directory of pickle files, or one pickle file",
     )
     parser.add_argument(
         "--output", "-o", help="Output directory (for directory/pickle input) or output root (for file list input)"

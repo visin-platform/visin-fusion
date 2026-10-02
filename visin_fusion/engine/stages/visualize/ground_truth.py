@@ -13,7 +13,7 @@ import numpy as np
 import torch
 
 from visin_fusion.config.config import load_config
-from visin_fusion.data.data_loader import DataLoader as InferenceDataLoader
+from visin_fusion.data.preprocessing import Preprocessor
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.utils.helpers import get_annotation_path, relabel_annotation
 
@@ -145,8 +145,7 @@ class GroundTruthVisualizer:
             green_map[idx] = color_list[label_num][1]
             red_map[idx] = color_list[label_num][2]
 
-        segmented_image = np.stack([blue_map, green_map, red_map], axis=2)
-        return segmented_image
+        return np.stack([blue_map, green_map, red_map], axis=2)
 
     def _get_output_path(self, output_type, input_path):
         """Get output path for a given visualization type."""
@@ -163,8 +162,7 @@ def load_image_paths(path_arg, dataroot, dataset_name):
             return [path_arg]
         # Text file with multiple paths
         with open(path_arg) as f:
-            paths = f.read().splitlines()
-        return paths
+            return f.read().splitlines()
     # Frame number - construct camera path
     return [f"camera/{path_arg}.png"]
 
@@ -173,10 +171,7 @@ def process_images(data_loader, visualizer, image_paths, dataroot, dataset_name,
     """Process and visualize all images."""
     for idx, path in enumerate(image_paths, 1):
         # Construct full paths
-        if os.path.isabs(path):
-            cam_path = path
-        else:
-            cam_path = os.path.join(dataroot, path)
+        cam_path = path if os.path.isabs(path) else os.path.join(dataroot, path)
 
         anno_path = get_annotation_path(cam_path, config)
 
@@ -184,7 +179,8 @@ def process_images(data_loader, visualizer, image_paths, dataroot, dataset_name,
         rgb_name = os.path.basename(cam_path).split(".")[0]
         anno_name = os.path.basename(anno_path).split(".")[0]
 
-        assert rgb_name == anno_name, f"RGB and annotation names don't match: {rgb_name} vs {anno_name}"
+        if rgb_name != anno_name:
+            raise ValueError(f"RGB and annotation names do not match: {rgb_name} vs {anno_name}")
 
         logger.info("Processing image %s/%s: %s", idx, len(image_paths), rgb_name)
 
@@ -196,6 +192,7 @@ def process_images(data_loader, visualizer, image_paths, dataroot, dataset_name,
 
 def main():
     # Parse arguments
+    """Entry point: render the dataset's ground-truth annotations over its camera images."""
     parser = argparse.ArgumentParser(description="Visualize Ground Truth Annotations")
     parser.add_argument(
         "-p",
@@ -217,7 +214,7 @@ def main():
     output_base = os.path.join(log_dir, "visualizations")
 
     # Setup data loader (for potential future use)
-    data_loader = InferenceDataLoader(config)
+    data_loader = Preprocessor.from_config(config)
 
     # Setup visualizer
     visualizer = GroundTruthVisualizer(config, output_base)

@@ -99,7 +99,7 @@ class Visualizer:
         # calculation used during testing.  We will then upsample the mask for visualization.
         pred_small = torch.argmax(output_seg.squeeze(), dim=0).detach().cpu().numpy().astype(np.uint8)
 
-        # Build a corresponding ground‑truth map at the same resolution
+        # Build a corresponding ground-truth map at the same resolution
         model_size = self.config["Dataset"]["transforms"]["resize"]
         if model_size is None:
             # fallback to height/width if configuration is missing
@@ -158,7 +158,7 @@ class Visualizer:
         overlay = image.copy().astype(np.float32)
 
         # Find non-black pixels in segmented image (predicted classes)
-        # Background is black [0, 0, 0] in BGR
+        # Background is black in BGR, so any non-black pixel is a predicted class
         mask = np.any(segmented_image != [0, 0, 0], axis=2)
 
         # Apply alpha blending only to predicted regions

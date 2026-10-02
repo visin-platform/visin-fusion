@@ -10,7 +10,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from visin_fusion.models.registry import segment
 from visin_fusion.utils.helpers import relabel_annotation
 from visin_fusion.utils.metrics import compute_ap_for_class, store_predictions_for_ap
 
@@ -57,8 +56,8 @@ class TestingEngine:
                 # Time the forward pass
                 inference_start = time.time()
 
-                # Forward pass: the segmentation map, whatever the model (visin_fusion/models/registry.py)
-                output_seg = segment(self.model, self.config, rgb, lidar)
+                # Forward pass: the segmentation map, the same call for every model
+                output_seg = self.model(rgb, lidar)
 
                 # Synchronize and record time
                 if torch.cuda.is_available():
@@ -72,7 +71,7 @@ class TestingEngine:
                 anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
 
                 # Update accumulators for IoU/precision/recall
-                batch_overlap, batch_pred, batch_label, batch_union = self.metrics_calc.update_accumulators(
+                batch_overlap, _batch_pred, _batch_label, batch_union = self.metrics_calc.update_accumulators(
                     accumulators, output_seg, anno, num_classes
                 )
 
@@ -138,10 +137,7 @@ class TestingEngine:
             recall = self.metrics_calc.sanitize_value(eval_recall[i].item())
 
             # Calculate F1
-            if precision + recall > 0:
-                f1 = 2 * (precision * recall) / (precision + recall)
-            else:
-                f1 = 0.0
+            f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0.0
             f1 = self.metrics_calc.sanitize_value(f1)
 
             # Calculate proper AP using stored predictions

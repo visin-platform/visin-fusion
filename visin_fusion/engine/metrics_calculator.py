@@ -36,15 +36,13 @@ class MetricsCalculator:
         """Extract evaluation class names from config (excludes background at index 0)."""
         train_classes = self.config["Dataset"]["train_classes"]
         # Get all classes with index > 0, sorted by index
-        eval_classes = [cls["name"] for cls in sorted(train_classes, key=lambda x: x["index"]) if cls["index"] > 0]
-        return eval_classes
+        return [cls["name"] for cls in sorted(train_classes, key=lambda x: x["index"]) if cls["index"] > 0]
 
     def _extract_eval_indices(self):
         """Extract evaluation class indices from config (excludes background at index 0)."""
         train_classes = self.config["Dataset"]["train_classes"]
         # Get all indices > 0, sorted
-        eval_indices = [cls["index"] for cls in sorted(train_classes, key=lambda x: x["index"]) if cls["index"] > 0]
-        return eval_indices
+        return [cls["index"] for cls in sorted(train_classes, key=lambda x: x["index"]) if cls["index"] > 0]
 
     def update(self, outputs, targets):
         """Update metrics with batch predictions and targets."""
@@ -142,10 +140,7 @@ class MetricsCalculator:
         # Dice score (F1 score) - already calculated as f1
 
         # Average loss
-        if num_batches > 0:
-            epoch_loss = total_loss / num_batches
-        else:
-            epoch_loss = 0.0
+        epoch_loss = total_loss / num_batches if num_batches > 0 else 0.0
 
         return {
             "epoch_IoU": epoch_IoU,

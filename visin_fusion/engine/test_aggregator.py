@@ -7,9 +7,10 @@ import datetime
 import json
 import logging
 import os
+import re
 import uuid
 
-from visin_fusion.engine.callbacks import configured_callbacks
+from visin_fusion.engine.callbacks import TestEnd, configured_callbacks
 from visin_fusion.utils.helpers import sanitize_for_json
 
 logger = logging.getLogger(__name__)
@@ -53,10 +54,7 @@ def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args)
     os.makedirs(test_results_dir, exist_ok=True)
 
     # Generate filename
-    if epoch_uuid:
-        filename = f"epoch_{epoch_num}_{epoch_uuid}.json"
-    else:
-        filename = f"epoch_{epoch_num}_test_results.json"
+    filename = f"epoch_{epoch_num}_{epoch_uuid}.json" if epoch_uuid else f"epoch_{epoch_num}_test_results.json"
 
     filepath = os.path.join(test_results_dir, filename)
 
@@ -69,12 +67,7 @@ def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args)
     logger.info("Test UUID: %s", test_uuid)
 
     configured_callbacks(config).emit(
-        "on_test_end",
-        config=config,
-        epoch=epoch_num,
-        epoch_uuid=epoch_uuid,
-        results=checkpoint_results,
-        test_uuid=test_uuid,
+        TestEnd(config=config, epoch=epoch_num, epoch_uuid=epoch_uuid, results=checkpoint_results, test_uuid=test_uuid)
     )
 
     # Return checkpoint data
@@ -101,8 +94,6 @@ def extract_epoch_info(checkpoint_path):
     Returns:
         Tuple of (epoch_num, epoch_uuid)
     """
-    import re
-
     filename = os.path.basename(checkpoint_path)
 
     # Try new format first: epoch_{num}_{uuid}.pth

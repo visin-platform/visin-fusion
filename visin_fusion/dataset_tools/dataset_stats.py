@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Statistics of a dataset's training split: LiDAR normalization and class frequencies.
 
-    python tools/dataset_stats.py --root /data/my_dataset            # print them
-    python tools/dataset_stats.py --root /data/my_dataset --write    # also store them in dataset.json
+    visin-fusion dataset stats --root /data/my_dataset            # print them
+    visin-fusion dataset stats --root /data/my_dataset --write    # also store them in dataset.json
 
 - LiDAR normalization (``lidar_mean`` / ``lidar_std``) is computed over the pixels that have a LiDAR
   point, on 0..1 pixel values, the way the existing configs' values were computed.
@@ -14,6 +14,7 @@
 
 import argparse
 import json
+import logging
 import os
 import sys
 
@@ -21,7 +22,10 @@ import numpy as np
 from PIL import Image
 
 from visin_fusion.config.dataset_manifest import MANIFEST, apply_manifest
+from visin_fusion.logging_setup import configure_logging
 from visin_fusion.utils.helpers import get_annotation_path, get_lidar_path
+
+logger = logging.getLogger(__name__)
 
 
 def lidar_statistics(paths):
@@ -52,37 +56,40 @@ def class_frequencies(paths, train_classes):
 
 
 def suggested_weights(frequencies):
+    """Loss weights that give each class's pixel share the weight of the median class's, 0 for classes never seen."""
     present = frequencies[frequencies > 0]
     median = np.median(present) if len(present) else 0
     return [round(float(median / f), 3) if f > 0 else 0.0 for f in frequencies]
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def main(argv=None):
+    """Command line entry point: ``visin-fusion dataset stats``."""
+    parser = argparse.ArgumentParser(prog="visin-fusion dataset stats", description=__doc__.split("\n\n")[0])
     parser.add_argument("--root", required=True, help="dataset root with a dataset.json")
     parser.add_argument("--write", action="store_true", help="store normalization and weights in dataset.json")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    configure_logging()
 
     config = apply_manifest({"Dataset": {"dataset_root": args.root}})
     dataset = config["Dataset"]
     if "train_split" not in dataset:
-        sys.exit(f"{args.root} has no {MANIFEST} with a train split (tools/make_manifest.py writes one)")
+        sys.exit(f"{args.root} has no {MANIFEST} with a train split (visin-fusion dataset manifest writes one)")
     with open(dataset["train_split"]) as f:
         cams = [os.path.join(args.root, line.strip()) for line in f if line.strip()]
-    print(f"{len(cams)} training frames")
+    logger.info("%d training frames", len(cams))
 
     lidar = [p for p in (get_lidar_path(c, config) for c in cams) if os.path.exists(p)]
     lidar_mean, lidar_std = lidar_statistics(lidar)
-    print(f"lidar_mean {lidar_mean}\nlidar_std  {lidar_std}   ({len(lidar)} LiDAR images)")
+    logger.info("lidar_mean %s\nlidar_std  %s   (%d LiDAR images)", lidar_mean, lidar_std, len(lidar))
 
     train_classes = dataset.get("train_classes")
     if train_classes:
         annotations = [p for p in (get_annotation_path(c, config) for c in cams) if os.path.exists(p)]
         frequencies = class_frequencies(annotations, train_classes)
         weights = suggested_weights(frequencies)
-        print(f"\n{'class':<14}{'pixels':>9}{'weight now':>12}{'suggested':>11}")
-        for cls, freq, weight in zip(train_classes, frequencies, weights):
-            print(f"{cls['name']:<14}{freq:>9.2%}{cls.get('weight', 1.0):>12}{weight:>11}")
+        logger.info("\n%-14s%9s%12s%11s", "class", "pixels", "weight now", "suggested")
+        for cls, freq, weight in zip(train_classes, frequencies, weights, strict=True):
+            logger.info("%-14s%9.2f%%%12s%11s", cls["name"], freq * 100, cls.get("weight", 1.0), weight)
 
     if args.write:
         path = os.path.join(args.root, MANIFEST)
@@ -90,12 +97,12 @@ def main():
             manifest = json.load(f)
         manifest["normalization"] = {"lidar_mean": lidar_mean, "lidar_std": lidar_std}
         if train_classes and manifest.get("train_classes"):
-            for cls, weight in zip(manifest["train_classes"], weights):
+            for cls, weight in zip(manifest["train_classes"], weights, strict=True):
                 cls["weight"] = weight
         with open(path, "w") as f:
             json.dump(manifest, f, indent=2)
             f.write("\n")
-        print(f"\nWrote normalization{' and class weights' if train_classes else ''} to {path}")
+        logger.info("\nWrote normalization%s to %s", " and class weights" if train_classes else "", path)
 
 
 if __name__ == "__main__":

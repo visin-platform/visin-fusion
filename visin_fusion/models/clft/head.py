@@ -1,7 +1,11 @@
+"""CLFT's segmentation and depth heads."""
+
 import torch.nn as nn
 
 
 class Interpolate(nn.Module):
+    """Upsampling as a module, so it can sit in a ``Sequential``."""
+
     def __init__(self, scale_factor, mode, align_corners=False):
         super().__init__()
         self.interp = nn.functional.interpolate
@@ -10,11 +14,13 @@ class Interpolate(nn.Module):
         self.align_corners = align_corners
 
     def forward(self, x):
-        x = self.interp(x, scale_factor=self.scale_factor, mode=self.mode, align_corners=self.align_corners)
-        return x
+        """``x`` resized by the configured scale factor and mode."""
+        return self.interp(x, scale_factor=self.scale_factor, mode=self.mode, align_corners=self.align_corners)
 
 
 class HeadDepth(nn.Module):
+    """Depth head: convolutions and upsampling to one channel, squashed to 0..1 by a sigmoid."""
+
     def __init__(self, features):
         super().__init__()
         self.head = nn.Sequential(
@@ -27,11 +33,13 @@ class HeadDepth(nn.Module):
         )
 
     def forward(self, x):
-        x = self.head(x)
-        return x
+        """A depth map in 0..1, ``[B, 1, H, W]``."""
+        return self.head(x)
 
 
 class HeadSeg(nn.Module):
+    """Segmentation head: convolutions and upsampling to one channel per class."""
+
     def __init__(self, features, nclasses=2):
         super().__init__()
         self.head = nn.Sequential(
@@ -43,5 +51,5 @@ class HeadSeg(nn.Module):
         )
 
     def forward(self, x):
-        x = self.head(x)
-        return x
+        """Class scores, ``[B, nclasses, H, W]``."""
+        return self.head(x)

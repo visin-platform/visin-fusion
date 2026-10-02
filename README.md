@@ -6,20 +6,19 @@ model families share one call: `model(rgb, lidar)` returns class logits shaped
 
 ## Install
 
-Install from a source checkout:
-
 ```bash
-git clone https://github.com/visin-platform/visin-fusion.git
-cd visin-fusion
-python -m pip install -e .
+python -m pip install visin-fusion
 ```
 
-The base install provides the models. Add `.[train]` for the training and evaluation pipeline,
-`.[visin]` for Visin reporting and datasets, or `.[dev]` for tests. See the
+From a source checkout instead: `git clone https://github.com/visin-platform/visin-fusion.git`, then `python -m pip install -e .` in it.
+
+The install provides the models and the training and evaluation pipeline. Add `.[visin]` for Visin
+reporting and datasets, or `.[dev]` for tests. See the
 [installation and API guide](docs/library.md) for details.
 
 ## Use a model
 
+<!-- doctest -->
 ```python
 import torch
 from visin_fusion.models import CLFTv2
@@ -48,20 +47,19 @@ a three-channel projected image, not a raw point cloud.
 For ZOD, Waymo, and Iseauto datasets, follow [Download and train](docs/download-and-train.md):
 install, download, and run the pipeline with CLI commands.
 
-Train, test, visualize and benchmark CLFTv2 on the included sample dataset:
+Train, test, visualize and benchmark CLFTv2 on the included sample dataset (the [getting started](docs/getting-started.md) page also shows how to use your own data):
 
 ```bash
-python -m pip install -e '.[train]'
-visin-fusion run -c configs/quickstart.json
+visin-fusion quickstart
 ```
 
 The [pipeline guide](docs/running.md) covers configs, Docker, SLURM and individual stages. Add
-`.[train,visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](docs/visin.md).
+`.[visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](docs/visin.md).
 
 ## Tests
 
 ```bash
-python -m pip install -e '.[train,visin,dev]'
+python -m pip install -e '.[visin,dev]'
 pytest tests/unit
 python tools/coverage.py  # unit + end-to-end; requires >90% package coverage
 ```

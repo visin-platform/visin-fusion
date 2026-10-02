@@ -2,16 +2,18 @@
 
 import json
 import uuid
-from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import torch
 
 from visin_fusion.config.config import load_config
+from visin_fusion.engine import callbacks
 from visin_fusion.engine.stages.visualize import common
-from visin_fusion.models.registry import build_model
+from visin_fusion.models.registry import from_config
+from visin_fusion.sample import SAMPLE_DIR
 
-SAMPLE = Path(__file__).resolve().parents[1] / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 KINDS = ["segment", "overlay", "compare", "correct_only"]
 
 
@@ -40,7 +42,7 @@ def trained(tmp_path, monkeypatch):
             {"training_uuid": "run-1", "epoch_uuid": epoch_uuid, "epoch": 2, "results": {"val": {"mean_iou": 0.1}}}
         )
     )
-    model = build_model(config, pretrained=False)
+    model = from_config(config, pretrained=False)
     torch.save(
         {"model_state_dict": model.state_dict(), "epoch": 2},
         tmp_path / "logs" / "checkpoints" / f"epoch_2_{epoch_uuid}.pth",
@@ -73,9 +75,29 @@ def test_a_frame_that_cannot_be_rendered_fails_the_run(trained, tmp_path):
 
 
 def test_checkpoint_of_another_model_does_not_load(trained, tmp_path):
-    config_path, logdir = trained
+    config_path, _logdir = trained
     other = json.loads(config_path.read_text())
     other["CLI"]["mode"] = "fusion"  # a late-fusion DeepLab has two branches: different weights
     config_path.write_text(json.dumps(other))
     with pytest.raises(RuntimeError, match=r"Missing key|Unexpected key"):
         common.main(["-c", str(config_path)])
+
+
+class Seen(callbacks.Callback):
+    images: ClassVar[list] = []
+
+    def __init__(self, config):
+        Seen.images.clear()
+
+    def on_visualization(self, event):
+        Seen.images.append(event.image_name)
+
+
+def test_the_configs_callbacks_see_every_image_without_upload(trained, monkeypatch):
+    config_path, _ = trained
+    monkeypatch.setattr(callbacks, "pipeline_key_present", lambda: True)  # Visin stays out without --upload
+    config = json.loads(config_path.read_text())
+    config["General"]["callbacks"] = [f"{__name__}:Seen"]
+    config_path.write_text(json.dumps(config))
+    common.main(["-c", str(config_path)])
+    assert len(Seen.images) == len((SAMPLE / "visualizations.txt").read_text().split())

@@ -1,6 +1,6 @@
 # Use as a Python library
 
-`visin_fusion.models` can be used inside your own data loader, training loop or inference service. A pipeline config, Docker and Visin reporting are optional. The base package supplies the five model classes; the extras add pipeline tools and integrations.
+`visin_fusion.models` can be used inside your own data loader, training loop or inference service. A pipeline config, Docker and Visin reporting are optional. The package supplies the five model classes and the pipeline; the `visin` extra adds the Visin integration.
 
 ## Install
 
@@ -9,12 +9,11 @@ Install from a source checkout:
 ```bash
 git clone https://github.com/visin-platform/visin-fusion.git
 cd visin-fusion
-python -m pip install -e .                  # models and Python API
-python -m pip install -e '.[train]'          # also train/test/visualize/benchmark pipeline
-python -m pip install -e '.[train,visin]'    # also Visin reporting and visin: datasets
+python -m pip install -e .                  # models, Python API and the pipeline
+python -m pip install -e '.[visin]'          # also Visin reporting and visin: datasets
 ```
 
-Python 3.10+ is declared in `pyproject.toml`. The base install depends on PyTorch, torchvision, timm and einops. The optional `dev` and `docs` extras provide tests and the documentation site.
+Python 3.10+ is declared in `pyproject.toml`. The install depends on PyTorch, torchvision, timm and einops for the models, and on NumPy, pydantic, TensorBoard, OpenCV, pandas and a few more for the pipeline (all listed in `pyproject.toml`). The optional `dev` and `docs` extras provide tests and the documentation site.
 
 ## Choose a model
 
@@ -36,12 +35,13 @@ from visin_fusion.models import (
 | `Mask2FormerFusion` | `cross_fusion` | Swin features, multi-scale pixel decoder, masked queries |
 | `DeepLabV3Plus` | `fusion` | Two ResNet-101/ASPP/decoder branches, late fusion |
 
-See [Compare models](models.md) for diagrams, implementation differences and paper links. Every class also accepts `mode="rgb"` or `mode="lidar"`. The mode is chosen when constructing the model.
+See [Compare models](models.md) for diagrams, implementation differences and paper links. Every class also accepts `mode="rgb"` or `mode="lidar"`. The mode is chosen when constructing the model, and either spelling of the two-stream mode (`"fusion"` or `"cross_fusion"`) works for every class.
 
 ## Inference contract
 
-The call is the same for all five classes: `model(rgb, lidar)`. Both arguments are PyTorch tensors shaped **`[batch, 3, height, width]`**. `lidar` is a camera-aligned *projection* with three channels, not an unordered point cloud or radar tensor. The returned tensor contains **unnormalized semantic logits** shaped `[batch, num_classes, height, width]`. Use `argmax(dim=1)` for integer class predictions.
+The call is the same for all five classes: `model(rgb, lidar)`. Both arguments are PyTorch tensors shaped **`[batch, 3, height, width]`**. `lidar` is a camera-aligned *projection* with three channels, not an unordered point cloud or radar tensor. The returned tensor contains **unnormalized semantic logits** shaped `[batch, num_classes, height, width]`. Use `argmax(dim=1)` for integer class predictions. A single-stream model needs only its own input (`model(rgb=image)` or `model(lidar=projection)`); a missing or wrongly shaped input raises a `ValueError` that names it.
 
+<!-- doctest -->
 ```python
 import torch
 from visin_fusion.models import CLFTv2
@@ -94,8 +94,42 @@ restored = Mask2FormerFusion.from_pretrained("model.pth", num_classes=4, mode="c
 
 `from_pretrained` also accepts a name registered with `ModelClass.register_pretrained(name, URL)`. This release does **not** ship named pretrained weights; use a local checkpoint or register your own URL. Match the class, class count and architecture options when loading a checkpoint.
 
+## Add your own model
+
+A subclass of `FusionModel` plus one `register_model(...)` call makes a model usable by the whole pipeline; see [Add your own model](add-a-model.md).
+
+## Use a trained model
+
+A checkpoint written by the pipeline's train stage carries the model, its classes and the preprocessing it was trained with, so it needs no config:
+
+```python
+from visin_fusion.inference import Predictor
+
+predictor = Predictor.from_checkpoint("logs/my_run/checkpoints/epoch_9_<uuid>.pth")
+mask = predictor.predict("camera/000001.png", "lidar_png/000001.png")  # [H, W] uint8, the size of the image
+overlay = predictor.overlay("camera/000001.png", mask)  # [H, W, 3] RGB
+print(predictor.class_names)  # what each mask value means
+```
+
+- `predict` resizes and normalizes the inputs as in training and returns the class index of every pixel at the original image size. Pass a path or a PIL image. A camera-only model needs only the first argument, a LiDAR-only model `lidar=...`.
+- `predictor.colorize(mask)` (an RGB array) uses the classes' `color` from the training config; `predictor.logits(...)` gives the scores at the model's input size.
+- Checkpoints from before this was added have no `model_info`; pass the config that trained them: `Predictor.from_checkpoint(path, config="my_config.json")`.
+- To build tensors for your own loop, `from visin_fusion.data.preprocessing import Preprocessor` and `Preprocessor(transforms)` give `load_rgb` and `load_lidar`, where `transforms` is the checkpoint's `info["transforms"]` or a config's `Dataset.transforms`. Raw images fed to a model without this step give wrong results.
+
+From the command line, for a folder of camera images (the LiDAR projection of `.../camera/x.png` is `.../lidar_png/x.png`, or use `--lidar-dir`):
+
+```bash
+visin-fusion predict --checkpoint logs/my_run/checkpoints/epoch_9_<uuid>.pth --input data/camera --output predictions/
+```
+
+It writes `<name>_mask.png` and `<name>_overlay.png` for every image, in the same subfolders as under `--input`. The mask is a palette PNG: its pixel values are the class indices (`np.array(Image.open(path))`), and viewers show it in the classes' colors rather than black.
+
+## Use the runnable pipeline from Python
+
+`visin_fusion.run(config)` runs the pipeline from a script or notebook; see [Running](running.md#from-python).
+
 ## Use the runnable pipeline
 
-The [CLI pipeline](running.md) supplies datasets, config validation, training, testing, visualization and benchmarking. Install `[train]`, then run `visin-fusion run -c config.json`. The optional `[visin]` extra adds Visin reporting and `visin:` dataset resolution. Credentials
+The [CLI pipeline](running.md) supplies datasets, config validation, training, testing, visualization and benchmarking. Run `visin-fusion run -c config.json`. The optional `[visin]` extra adds Visin reporting and `visin:` dataset resolution. Credentials
 come from exported variables or an application-owned `.env`/`VISIN_ENV_FILE`; see the
 [Visin integration guide](visin.md). See [Configs](configs.md) and [Datasets](datasets.md) for that route.

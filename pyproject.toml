@@ -19,11 +19,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Image Recognition",
 ]
-dependencies = ["torch>=2.2", "torchvision>=0.17", "timm>=1.0", "einops>=0.7"]
+dependencies = [
+    "torch>=2.2", "torchvision>=0.17", "timm>=1.0", "einops>=0.7",
+    # The visin-fusion command and its stages import all of these.
+    "numpy", "scipy", "pydantic>=2", "tqdm", "tensorboard", "Pillow>=9.1", "opencv-python", "pandas",
+    "psutil", "nvidia-ml-py", "GPUtil", "thop", "fvcore",
+]
 
 [project.optional-dependencies]
-train = ["numpy", "scipy", "pydantic>=2", "tqdm", "tensorboard", "Pillow", "opencv-python", "pandas", "matplotlib", "psutil", "nvidia-ml-py", "GPUtil", "thop", "fvcore"]
-visin = ["visin>=0.2", "python-dotenv", "requests"]
+train = []  # kept so `pip install visin-fusion[train]` still works; everything it named is now core
+visin =["visin>=0.2", "python-dotenv", "requests"]
 
 dev = ["pytest", "pytest-cov", "coverage>=7.10", "ruff>=0.6", "mypy>=1.10", "pre-commit>=3.5", "build>=1.0", "twine>=6.1"]
 
@@ -47,6 +52,8 @@ include = ["visin_fusion*"]
 version = {attr = "visin_fusion._version.__version__"}
 
 [tool.setuptools.package-data]
+"visin_fusion" = ["py.typed"]
+"visin_fusion.sample" = ["zod_sample/**/*"]
 "visin_fusion.config" = ["presets/*.json"]
 
 [tool.ruff]
@@ -61,19 +68,10 @@ select = [
   "ERA", "S", "T20", "PLC0415",
   "D100", "D101", "D102", "D103", "D104",
 ]
-# Debt: each family below still has findings. Fix a family, then delete its line; never add one.
+# Deliberate exceptions, each with its reason. Fix findings rather than adding to this list.
 ignore = [
-  "D100", "D101", "D102", "D103", "D104",  # public docstrings
-  "PLC0415",  # imports inside functions
-  "ERA001",   # commented-out code
-  "E501",     # long lines
-  "S101",     # assert
-  "S110", "S311", "S603",
-  "RET504",
-  "SIM108",
-  "B905",     # zip without strict
-  "RUF002", "RUF003",
-  "RUF059",
+  "S311",     # random is for augmentation and seeding, never for security
+  "S603",     # subprocess runs the stage modules with sys.executable, never user input
   "PERF203",  # per-item error handling in loops is intended
   "A002",     # `type` and `input` are keyword names of the public model constructors
 ]
@@ -82,7 +80,28 @@ ignore = [
 "tests/**" = ["S101", "S105", "S106", "S108", "PLC0415", "PT011", "PT018", "T201", "D"]
 "tools/**" = ["T201", "S607", "S301", "D", "RUF001", "ISC004"]
 "visin_fusion/cli.py" = ["T201"]
+# Lazy imports, each for an optional dependency or to keep `import visin_fusion` light
+"visin_fusion/__init__.py" = ["PLC0415"]  # run() loads the pipeline (torch) on first use
+"visin_fusion/data/visin_datasets.py" = ["PLC0415"]  # the optional visin extra
+"visin_fusion/engine/callbacks.py" = ["PLC0415"]  # the optional visin extra
+"visin_fusion/integrations/settings.py" = ["PLC0415"]  # python-dotenv, from the visin extra
+"visin_fusion/logging_setup.py" = ["PLC0415"]  # visin's console logging, if installed
+"visin_fusion/utils/system_monitor.py" = ["PLC0415"]  # NVML needs a driver; its absence is handled
 "visin_fusion/config/config_schema.py" = ["T201"]
+
+[tool.mypy]
+# The modules that are fully annotated; add a path here as more of the package is. Third-party stubs may be
+# missing (timm, cv2, GPUtil, ...), so their imports are not errors.
+files = [
+  "visin_fusion/config",
+  "visin_fusion/models",
+  "visin_fusion/inference.py",
+  "visin_fusion/pipeline.py",
+  "visin_fusion/data/preprocessing.py",
+]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

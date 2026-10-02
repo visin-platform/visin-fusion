@@ -1,9 +1,9 @@
 {
   "extends": "clftv2",
   "Summary": "Quick start: CLFTv2 fusion, ZOD sample",
-  "description": "Two short epochs of the CLFTv2 preset on the 28-frame sample dataset in tests/data.",
+  "description": "Two short epochs of the CLFTv2 preset on the 28-frame sample dataset shipped with the package.",
   "tags": ["quickstart"],
-  "Dataset": {"dataset_root": "tests/data/zod_sample"},
+  "Dataset": {"dataset_root": "visin_fusion/sample/zod_sample"},
   "Log": {"logdir": "logs/quickstart"},
   "General": {"epochs": 2, "batch_size": 2, "early_stop_patience": 2, "max_checkpoints": 1},
   "CLFTv2": {"warmup_epochs": 0}

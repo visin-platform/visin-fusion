@@ -7,9 +7,10 @@ import pytest
 
 from visin_fusion.config.config import load_config, merge, prepare_config, resolve_extends
 from visin_fusion.config.config_schema import ConfigError
+from visin_fusion.sample import SAMPLE_DIR
 
 REPO = Path(__file__).resolve().parents[2]
-SAMPLE = REPO / "tests" / "data" / "zod_sample"
+SAMPLE = SAMPLE_DIR
 PRESETS = sorted(p.stem for p in (REPO / "visin_fusion" / "config" / "presets").glob("*.json"))
 assert PRESETS, "no presets found"
 

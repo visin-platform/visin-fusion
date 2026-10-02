@@ -29,7 +29,7 @@ def test_iou_areas_by_hand():
 
 def test_background_is_not_evaluated():
     anno = torch.zeros(1, 2, 2, dtype=torch.long)
-    overlap, predicted, label, union = find_overlap_exclude_bg_ignore(3, logits_for(anno, 3), anno)
+    overlap, _predicted, label, union = find_overlap_exclude_bg_ignore(3, logits_for(anno, 3), anno)
     assert overlap.tolist() == [0, 0] and label.tolist() == [0, 0]
     assert (union > 0).all()  # clamped, so IoU is 0 rather than a division by zero
 

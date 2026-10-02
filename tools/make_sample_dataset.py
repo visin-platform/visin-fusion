@@ -6,7 +6,7 @@ lidar_png/, annotation folders and split .txt files), downscales them, and write
 same layout with its own split files, so any config can point at it unchanged.
 
     python tools/make_sample_dataset.py --source /data/zod_dataset --splits /data/zod_dataset \
-        --output tests/data/zod_sample
+        --output visin_fusion/sample/zod_sample
 
 Camera images are resized bilinearly; annotations and LiDAR projections with nearest
 neighbour, so class ids and encoded LiDAR values are kept as they are.

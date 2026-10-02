@@ -1,30 +1,14 @@
+"""CLFT's residual fusion block, which combines the camera and LiDAR maps with the previous (coarser) stage."""
+
 import torch
 import torch.nn as nn
 
-
-class ResidualConvUnit(nn.Module):
-    def __init__(self, features):
-        super().__init__()
-
-        self.conv1 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.conv2 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        """Forward pass.
-        Args:
-            x (tensor): input
-        Returns:
-            tensor: output
-        """
-        out = self.relu(x)
-        out = self.conv1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        return out + x
+from visin_fusion.models.layers import ResidualConvUnit
 
 
 class Fusion(nn.Module):
+    """Fuses camera and LiDAR feature maps of one scale with the previous stage and upsamples 2x."""
+
     def __init__(self, resample_dim):
         super().__init__()
         self.res_conv_xyz = ResidualConvUnit(resample_dim)
@@ -32,6 +16,7 @@ class Fusion(nn.Module):
         self.res_conv2 = ResidualConvUnit(resample_dim)
 
     def forward(self, rgb, lidar, previous_stage=None, modal="rgb"):
+        """The fused map at twice the input resolution; the stream the mode does not use is zeros."""
         if previous_stage is None:
             previous_stage = torch.zeros_like(rgb)
 
@@ -48,5 +33,4 @@ class Fusion(nn.Module):
         output_stage1 = output_stage1_lidar + output_stage1_rgb + previous_stage
         output_stage2 = self.res_conv2(output_stage1)
 
-        output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
-        return output_stage2
+        return nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)

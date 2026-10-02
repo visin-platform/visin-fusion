@@ -36,7 +36,6 @@ nav:
   - Getting started: getting-started.md
   - Start training:
       - Overview: download-and-train.md
-      - Install and connect: training/setup.md
       - Prepare a dataset:
           - ZOD: training/datasets/zod.md
           - Waymo: training/datasets/waymo.md
@@ -48,8 +47,7 @@ nav:
           - DeepLabV3+: training/models/deeplabv3plus.md
           - MaskFormer: training/models/maskformer.md
           - Mask2Former: training/models/mask2former.md
-      - Run and inspect results: training/run.md
-      - Customize a run: training/customize.md
+  - Add your own model: add-a-model.md
   - Library API: library.md
   - User guide:
       - Configs: configs.md
@@ -67,4 +65,6 @@ nav:
   - Reference:
       - Python API: reference/python-api.md
       - Config reference: reference/config.md
+  - Troubleshooting: troubleshooting.md
+  - Changelog: changelog.md
   - Development: development.md

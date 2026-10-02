@@ -125,3 +125,11 @@ def test_config_reference_is_up_to_date():
     from make_config_reference import OUTPUT, render
 
     assert Path(OUTPUT).read_text() == render(), "run: python tools/make_config_reference.py"
+
+
+def test_the_repository_quickstart_config_is_the_packaged_one():
+    from visin_fusion.sample import QUICKSTART_CONFIG
+
+    on_disk = json.loads(QUICKSTART.read_text())
+    expected = {**QUICKSTART_CONFIG, "Dataset": on_disk["Dataset"]}
+    assert on_disk == expected

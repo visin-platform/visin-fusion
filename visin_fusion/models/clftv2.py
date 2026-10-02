@@ -7,45 +7,16 @@ import timm
 import torch
 import torch.nn as nn
 
-
-class Read_ignore(nn.Module):
-    def __init__(self, start_index=1):
-        super().__init__()
-        self.start_index = start_index
-
-    def forward(self, x):
-        return x[:, self.start_index :]
-
-
-class Read_add(nn.Module):
-    def __init__(self, start_index=1):
-        super().__init__()
-        self.start_index = start_index
-
-    def forward(self, x):
-        if self.start_index == 2:
-            readout = (x[:, 0] + x[:, 1]) / 2
-        else:
-            readout = x[:, 0]
-        return x[:, self.start_index :] + readout.unsqueeze(1)
-
-
-class Read_projection(nn.Module):
-    def __init__(self, in_features, start_index=1):
-        super().__init__()
-        self.start_index = start_index
-        self.project = nn.Sequential(nn.Linear(2 * in_features, in_features), nn.GELU())
-
-    def forward(self, x):
-        readout = x[:, 0].unsqueeze(1).expand_as(x[:, self.start_index :])
-        features = torch.cat((x[:, self.start_index :], readout), -1)
-        return self.project(features)
+from visin_fusion.models.layers import ResidualConvUnit
 
 
 class Resample(nn.Module):
+    """Projects a Swin stage's map to ``resample_dim`` channels and upsamples it by the scale ``s``."""
+
     def __init__(self, s, emb_dim, resample_dim):
         super().__init__()
-        assert s in [4, 8, 16, 32], "s must be in [4, 8, 16, 32]"
+        if s not in (4, 8, 16, 32):
+            raise ValueError(f"reassemble scale must be one of 4, 8, 16, 32, got {s}")
         self.emb_dim = emb_dim
         self.resample_dim = resample_dim
         self.s = s
@@ -53,15 +24,17 @@ class Resample(nn.Module):
             self.conv1 = nn.Conv2d(self.emb_dim, self.resample_dim, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
+        """``x`` projected and resampled, ``[B, resample_dim, H', W']``."""
         if self.emb_dim is None:
             self.emb_dim = x.shape[1]
             self.conv1 = nn.Conv2d(self.emb_dim, self.resample_dim, kernel_size=1, stride=1, padding=0).to(x.device)
         x = self.conv1(x)
-        x = nn.functional.interpolate(x, scale_factor=self.s, mode="bilinear", align_corners=False)
-        return x
+        return nn.functional.interpolate(x, scale_factor=self.s, mode="bilinear", align_corners=False)
 
 
 class SpatialReassemble(nn.Module):
+    """Prepares a Swin stage's spatial map ``[B, C, H, W]`` for fusion by projecting and resampling it."""
+
     def __init__(self, read, s, emb_dim, resample_dim):
         """
         Modified for spatial inputs [b, c, h, w]
@@ -76,36 +49,15 @@ class SpatialReassemble(nn.Module):
         self.resample = Resample(s, emb_dim, resample_dim)
 
     def forward(self, x):
-        # x is already [b, c, h, w]
+        """``x`` projected to ``resample_dim`` channels and upsampled."""
         x = self.read(x)
         x = self.concat(x)
-        x = self.resample(x)
-        return x
-
-
-class ResidualConvUnit(nn.Module):
-    def __init__(self, features):
-        super().__init__()
-
-        self.conv1 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.conv2 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        """Forward pass.
-        Args:
-            x (tensor): input
-        Returns:
-            tensor: output
-        """
-        out = self.relu(x)
-        out = self.conv1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        return out + x
+        return self.resample(x)
 
 
 class CrossAttention(nn.Module):
+    """Camera features attend to LiDAR features (multi-head attention over flattened maps)."""
+
     def __init__(self, dim, num_heads=4, qkv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
         self.num_heads = num_heads
@@ -115,8 +67,11 @@ class CrossAttention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, context):
-        # x: [B, C, H, W] (Query - Camera)
-        # context: [B, C, H, W] (Key/Value - LiDAR)
+        """Attention of ``x`` (query) over ``context`` (key and value), shaped like ``x``.
+
+        Maps larger than 64x64 are pooled to 64x64 for the attention and resized back.
+        """
+        # Camera features query LiDAR features; both are batch, channel, height, width.
         B, C, H, W = x.shape
 
         # Optimization: Downsample if spatial dimensions are too large to prevent OOM
@@ -136,7 +91,7 @@ class CrossAttention(nn.Module):
         context_flat = context_in.flatten(2).transpose(1, 2)
 
         # Attention
-        # query=x, key=context, value=context
+        # Camera features are the query; LiDAR features are the key and value.
         attn_out, _ = self.multihead_attn(query=x_flat, key=context_flat, value=context_flat)
 
         # Dropout
@@ -154,6 +109,8 @@ class CrossAttention(nn.Module):
 
 
 class Fusion(nn.Module):
+    """Fuses camera and LiDAR maps of one level by the configured ``fusion_strategy``, with the previous level."""
+
     def __init__(self, resample_dim, fusion_strategy=""):
         super().__init__()
         if not fusion_strategy:
@@ -206,6 +163,7 @@ class Fusion(nn.Module):
             pass
 
     def forward(self, rgb, lidar, previous_stage=None, modal="rgb"):
+        """The fused map at twice the input resolution; the stream the mode does not use is zeros."""
         if previous_stage is None:
             previous_stage = torch.zeros_like(rgb)
         else:
@@ -227,7 +185,7 @@ class Fusion(nn.Module):
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Apply Cross Attention: Query=RGB, Key/Value=LiDAR
                 attn_out = self.cross_attn(output_stage1_rgb, output_stage1_lidar)
-                # Formula: F_f = F_c + alpha * Attention(F_c, F_l) + F_l
+                # Fused: camera + alpha * attention(camera, lidar) + LiDAR + previous stage.
                 output_stage1 = output_stage1_rgb + (self.alpha * attn_out) + output_stage1_lidar + previous_stage
             elif self.fusion_strategy == "gmf":
                 output_stage1_rgb = self.res_conv_rgb(rgb)
@@ -292,18 +250,18 @@ class Fusion(nn.Module):
             else:
                 raise ValueError(f"Unknown fusion strategy: {self.fusion_strategy}")
 
-        output_stage2 = self.res_conv2(output_stage1)
-
-        # output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
-        return output_stage2
+        return self.res_conv2(output_stage1)
 
 
 class HeadDepth(nn.Module):
+    """Depth head: one convolution to a single channel."""
+
     def __init__(self, resample_dim):
         super().__init__()
         self.conv = nn.Conv2d(resample_dim, 1, kernel_size=3, stride=1, padding=1, bias=True)
 
     def forward(self, x):
+        """A depth map, ``[B, 1, H, W]``."""
         return self.conv(x)
 
 
@@ -318,10 +276,13 @@ class HeadSeg(nn.Module):
         self.conv2 = nn.Conv2d(resample_dim, nclasses, kernel_size=1, bias=True)
 
     def forward(self, x):
+        """Class scores, ``[B, nclasses, H, W]``."""
         return self.conv2(self.relu(self.bn(self.conv1(x))))
 
 
 class CLFTv2Network(nn.Module):
+    """The CLFTv2 network (see ``visin_fusion.models.CLFTv2`` for the public wrapper)."""
+
     def __init__(
         self,
         emb_dims=(128, 256, 512, 1024),
@@ -379,6 +340,7 @@ class CLFTv2Network(nn.Module):
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
 
     def forward(self, rgb, lidar, modal="rgb"):
+        """``(depth, segmentation)`` like CLFT's, with scores at the input size; depth is ``None`` for segmentation."""
         if modal == "rgb":
             features_rgb = self.transformer_encoders(rgb)
             features_lidar = None
@@ -407,7 +369,7 @@ class CLFTv2Network(nn.Module):
                 activation_result_rgb = features_rgb[i]
                 activation_result_lidar = features_lidar[i]
 
-            # Ensure [b, c, h, w]
+            # Make the layout batch, channel, height, width.
             if activation_result_rgb.shape[1] != self.emb_dims[i]:
                 activation_result_rgb = activation_result_rgb.permute(0, 3, 1, 2)
             if activation_result_lidar.shape[1] != self.emb_dims[i]:
