@@ -10,6 +10,18 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-02
+
+### Added
+
+- installable quickstart, inference, model registry and pipeline API
+
+### Fixed
+
+- set coverage precision to 2 decimal points
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/visin-platform/visin-fusion/compare/v0.2.0...v0.3.0
 ## [0.2.0] - 2026-10-01
 
 ### Added
@@ -20,7 +32,6 @@ one, together with anything written by hand under Unreleased.
 
 - config schema test
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/visin-platform/visin-fusion/compare/v0.1.1...v0.2.0
 ## [0.1.1] - 2026-09-30
 
