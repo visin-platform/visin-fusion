@@ -1,10 +1,13 @@
 """visin-fusion dataset project-lidar and stats on synthetic data."""
 
+import json
+
 import numpy as np
 import pytest
 from PIL import Image
 
 from visin_fusion.dataset_tools.dataset_stats import class_frequencies, lidar_statistics, suggested_weights
+from visin_fusion.dataset_tools.dataset_stats import main as stats_main
 from visin_fusion.dataset_tools.project_lidar import encode, project, scaled_intrinsics
 
 K = [[100, 0, 50], [0, 100, 40], [0, 0, 1]]
@@ -62,3 +65,47 @@ def test_class_frequencies_merge_dataset_classes(tmp_path):
 
 def test_suggested_weights_balance_by_median_frequency():
     assert suggested_weights(np.array([0.9, 0.05, 0.05, 0.0])) == [0.056, 1.0, 1.0, 0.0]
+
+
+@pytest.mark.parametrize("write", [False, True])
+@pytest.mark.parametrize("with_classes", [False, True])
+def test_stats_command_reports_and_optionally_writes_statistics(tmp_path, caplog, write, with_classes):
+    for folder in ("camera", "lidar_png", "labels"):
+        (tmp_path / folder).mkdir()
+    Image.fromarray(np.array([[[255, 0, 51], [0, 255, 51]]], dtype=np.uint8)).save(tmp_path / "lidar_png" / "a.png")
+    Image.fromarray(np.array([[0, 1]], dtype=np.uint8)).save(tmp_path / "labels" / "a.png")
+    # Missing images and blank split lines should be ignored.
+    (tmp_path / "train.txt").write_text("camera/a.png\n\ncamera/missing.png\n")
+    manifest = {
+        "format": 1,
+        "name": "synthetic",
+        "layout": {"camera": "camera", "lidar": "lidar_png"},
+        "annotations": ["labels"],
+        "splits": {"train": "train.txt"},
+    }
+    if with_classes:
+        manifest["train_classes"] = [
+            {"index": 0, "name": "background", "dataset_mapping": [0], "weight": 0.1},
+            {"index": 1, "name": "object", "dataset_mapping": [1]},
+        ]
+    path = tmp_path / "dataset.json"
+    original = json.dumps(manifest)
+    path.write_text(original)
+
+    stats_main(["--root", str(tmp_path), *(["--write"] if write else [])])
+
+    assert "2 training frames" in caplog.text
+    assert "1 LiDAR images" in caplog.text
+    if write:
+        updated = json.loads(path.read_text())
+        assert updated["normalization"] == {"lidar_mean": [0.5, 0.5, 0.2], "lidar_std": [0.5, 0.5, 0.0]}
+        if with_classes:
+            assert [cls["weight"] for cls in updated["train_classes"]] == [1.0, 1.0]
+        assert updated["splits"] == manifest["splits"]
+    else:
+        assert path.read_text() == original
+
+
+def test_stats_command_requires_a_training_split(tmp_path):
+    with pytest.raises(SystemExit, match=r"has no dataset\.json with a train split"):
+        stats_main(["--root", str(tmp_path)])
