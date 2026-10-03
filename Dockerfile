@@ -10,6 +10,6 @@ RUN apt-get update \
 WORKDIR /app
 RUN pip install torch torchvision --index-url ${TORCH_INDEX}
 COPY . .
-RUN pip install '.[visin]'
+RUN pip install --upgrade visin && pip install '.[visin]'
 ENTRYPOINT ["visin-fusion", "run"]
 CMD ["--help"]

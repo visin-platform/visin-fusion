@@ -10,10 +10,15 @@ Install the optional integration and give the calling application a pipeline key
 
 ```bash
 python -m pip install -e '.[visin]'
+python -m pip install --upgrade visin
 export VISIN_URL=https://vision-api.example.com
 export VISIN_TOKEN=...                 # project's Settings → Pipeline keys in Visin
 visin check --write                    # confirm this machine can report
 ```
+
+The Visin dependency has no version pin. `make install` upgrades it to the latest compatible
+release, and fresh Docker builds install that release too. To refresh an existing Docker image,
+rebuild with `docker compose build --no-cache` so Docker reruns the installation.
 
 You can instead keep credentials in **your application's** `.env` (the current working directory),
 or in a file anywhere outside the library:

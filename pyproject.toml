@@ -28,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 train = []  # kept so `pip install visin-fusion[train]` still works; everything it named is now core
-visin =["visin>=0.2", "python-dotenv", "requests"]
+visin = ["visin", "python-dotenv", "requests"]
 hf = ["huggingface_hub>=0.24"]  # hf:// models and hf: datasets; General.hub_repo
 
 dev = ["pytest", "pytest-cov", "coverage>=7.10", "ruff>=0.6", "mypy>=1.10", "pre-commit>=3.5", "build>=1.0", "twine>=6.1"]

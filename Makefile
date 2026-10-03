@@ -17,6 +17,7 @@ help: ## List the targets
 install: ## Create venv with every dev tool, and install the git hooks
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install --upgrade pip
+	$(VENV)/bin/pip install --upgrade visin
 	$(VENV)/bin/pip install -e '.[visin,dev]'
 	$(VENV)/bin/pre-commit install
 
