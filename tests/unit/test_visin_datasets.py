@@ -94,28 +94,11 @@ def test_a_downloaded_dataset_is_used_again_without_downloading(visin):
     assert state["downloads"] == 1
 
 
-def test_this_projects_dataset_service_is_the_default(monkeypatch):
-    used = {}
-
-    class Recording:
-        def __init__(self, url=None, **_kwargs):
-            used["url"] = url
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_exc):
-            pass
-
-        def download(self, ref):
-            return Path("/data") / ref
-
-    import visin
-
+def test_a_missing_dataset_service_is_a_configuration_error(monkeypatch):
     monkeypatch.delenv("VISIN_DATASET_URL", raising=False)
-    monkeypatch.setattr(visin, "Datasets", Recording)
-    assert visin_datasets.resolve_root("visin:zod") == "/data/zod"
-    assert used["url"] == visin_datasets.DEFAULT_DATASET_URL
+    monkeypatch.setattr(visin_datasets, "load_environment", lambda: None)
+    with pytest.raises(ValueError, match="VISIN_DATASET_URL"):
+        visin_datasets.resolve_root("visin:zod")
 
 
 def test_other_roots_are_left_alone(tmp_path):

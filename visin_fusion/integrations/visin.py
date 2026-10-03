@@ -10,7 +10,7 @@ Every script in this project reports through the functions here:
 Configuration comes from exported variables, ``VISIN_ENV_FILE``, or the caller's ``.env``:
 
     VISIN_TOKEN    a pipeline key (the project's Settings -> Pipeline keys in Visin)
-    VISIN_URL      the Visin API; defaults to this project's deployment, below
+    VISIN_URL      the Visin API address (required when VISIN_TOKEN is set)
     VISIN_MODE     ``offline`` on a node with no route to Visin; send later with ``visin sync``
     VISIN_ENV_FILE optional path to an env file outside the installed package
 
@@ -25,8 +25,11 @@ test script cannot mark a finished training as failed.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 from visin_fusion.integrations.settings import load_environment
@@ -44,16 +47,11 @@ from visin_fusion.utils.helpers import get_training_uuid_from_logs
 
 logger = logging.getLogger(__name__)
 
-# The deployment this project reports to. The visin package has no default
-# address, on purpose; this project keeps one, so a job that sets only
-# VISIN_TOKEN goes on reporting where it always has.
-DEFAULT_VISIN_URL = "https://vision-api.visin.eu"
-
 _environment_ready = False
 
 
 def prepare_environment() -> None:
-    """Load the caller's key file and default ``VISIN_URL``, once, before the first report.
+    """Load the caller's key file and require an explicit API address before reporting.
 
     Importing this module changes nothing; the functions below that talk to Visin call this first, so the
     environment is set up when a stage starts reporting, not when something imports the integration.
@@ -63,13 +61,53 @@ def prepare_environment() -> None:
         return
     load_environment()
     if os.getenv("VISIN_TOKEN") and not (os.getenv("VISIN_URL") or os.getenv("VISIN_API_URL")):
-        os.environ["VISIN_URL"] = DEFAULT_VISIN_URL
+        raise ValueError(
+            "VISIN_TOKEN requires VISIN_URL (or VISIN_API_URL); set it in VISIN_ENV_FILE or the environment"
+        )
     _environment_ready = True
 
 
 # The UUID an epoch of a run always has. Checkpoint file names carry it
 # (epoch_{n}_{uuid}.pth), which is how the later scripts find the epoch.
 epoch_uuid_for = visin.epoch_uuid_for
+
+
+HUB_SNAPSHOT = re.compile(r"datasets--(?P<org>[^/\\]+)--(?P<name>[^/\\]+)[/\\]snapshots[/\\](?P<commit>[0-9a-f]{40})")
+
+
+def _dataset_reference(root: str | None, name: str) -> str | dict[str, Any]:
+    """Record where the data came from: a Hub snapshot's repo and commit, or a Visin download's marker.
+
+    A ``hf:`` root resolves to a folder in the Hub cache, whose path names the repo and the exact commit it
+    holds. A Visin download leaves a marker with the dataset's id and revision. Anything else, or a marker
+    that cannot be read, falls back to the dataset label.
+    """
+    if not root:
+        return name
+    snapshot = HUB_SNAPSHOT.search(str(root))
+    if snapshot:
+        return {"source": "hf", "name": f"{snapshot['org']}/{snapshot['name']}", "revision": snapshot["commit"]}
+    for directory in (Path(root), *Path(root).parents):
+        marker = directory / ".visin-dataset.json"
+        if marker.is_file():
+            try:
+                data = json.loads(marker.read_text())
+                if not isinstance(data, dict) or any(
+                    not isinstance(data.get(field), str) or not data[field].strip() for field in ("id", "name")
+                ):
+                    raise ValueError("dataset marker needs an id and name")
+                if data.get("revision") is not None and not isinstance(data["revision"], str):
+                    raise ValueError("dataset marker revision must be a string")
+            except (OSError, ValueError) as exc:
+                logger.warning("Cannot read dataset provenance from %s (%s); using label %s", marker, exc, name)
+                return name
+            return {
+                "source": "visin",
+                "id": data["id"],
+                "name": data["name"],
+                **({"revision": data["revision"]} if data.get("revision") else {}),
+            }
+    return name
 
 
 def start_training_run(config: dict[str, Any], *, model: str) -> tuple[visin.Run, str]:
@@ -94,7 +132,7 @@ def start_training_run(config: dict[str, Any], *, model: str) -> tuple[visin.Run
         config.get("Summary") or f"Training {model} on {dataset} dataset",
         training_uuid=training_uuid,
         model=model,
-        dataset=dataset,
+        dataset=_dataset_reference(config["Dataset"].get("dataset_root"), dataset),
         tags=config.get("tags") or None,
     )
     # Visin knows whether it already had the run; offline, only the logs do.

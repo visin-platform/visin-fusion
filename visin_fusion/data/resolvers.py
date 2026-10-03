@@ -2,7 +2,10 @@
 
 from importlib import import_module
 
-_resolvers = {"visin": "visin_fusion.data.visin_datasets:resolve_root"}
+_resolvers = {
+    "visin": "visin_fusion.data.visin_datasets:resolve_root",
+    "hf": "visin_fusion.data.hf_datasets:resolve_root",
+}
 
 
 def register_resolver(prefix, resolver):
@@ -13,7 +16,8 @@ def register_resolver(prefix, resolver):
 def resolve_root(root):
     """The folder a ``Dataset.dataset_root`` names.
 
-    ``prefix:name`` goes to the resolver registered for the prefix (``visin:zod`` downloads); anything else is
+    ``prefix:name`` goes to the resolver registered for the prefix (``visin:zod`` and
+    ``hf:org/name@commit`` download); anything else is
     returned as it is.
     """
     if not isinstance(root, str) or ":" not in root:

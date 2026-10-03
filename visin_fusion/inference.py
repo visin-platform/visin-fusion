@@ -9,6 +9,8 @@
 Checkpoints written by this release carry what is needed to rebuild the model and preprocess its inputs
 (``model_info``). For an older checkpoint pass the config that trained it: ``Predictor.from_checkpoint(path,
 config=...)``, a config dict or the path of a config file.
+
+A model published to the Hugging Face Hub loads the same way: ``Predictor.from_pretrained("hf://org/name")``.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from torch.nn import functional as F
 from visin_fusion.config.config import load_config, prepare_config
 from visin_fusion.config.model_info import config_from_info, model_info
 from visin_fusion.data.preprocessing import ImageInput, Preprocessor
+from visin_fusion.hub import HubRef, download_checkpoint, parse_ref
 from visin_fusion.models.registry import from_config
 
 logger = logging.getLogger(__name__)
@@ -80,6 +83,27 @@ class Predictor:
         device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         model, info = load_checkpoint(path, config, device)
         return cls(model, info, device)
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        ref: str,
+        *,
+        revision: str | None = None,
+        filename: str | None = None,
+        config: Mapping | str | os.PathLike | None = None,
+        device: str | torch.device | None = None,
+    ) -> Predictor:
+        """Load a model from a Hugging Face Hub repo, ``hf://org/name`` or ``org/name``.
+
+        ``revision`` (or ``@commit`` in ``ref``) pins a commit, which is how a result stays reproducible;
+        ``filename`` names the checkpoint when the repo does not hold exactly ``checkpoint.pth`` or one
+        ``.pth``/``.pt`` file. The checkpoint is downloaded once into the Hub cache. A private repo needs your
+        own ``HF_TOKEN``; the extra is ``pip install visin-fusion[hf]``.
+        """
+        found = parse_ref(ref)
+        path = download_checkpoint(HubRef(found.repo, revision or found.revision, filename or found.filename))
+        return cls.from_checkpoint(path, config=config, device=device)
 
     @property
     def class_names(self) -> list[str]:

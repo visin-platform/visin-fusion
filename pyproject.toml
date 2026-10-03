@@ -29,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 train = []  # kept so `pip install visin-fusion[train]` still works; everything it named is now core
 visin =["visin>=0.2", "python-dotenv", "requests"]
+hf = ["huggingface_hub>=0.24"]  # hf:// models and hf: datasets; General.hub_repo
 
 dev = ["pytest", "pytest-cov", "coverage>=7.10", "ruff>=0.6", "mypy>=1.10", "pre-commit>=3.5", "build>=1.0", "twine>=6.1"]
 
@@ -83,6 +84,7 @@ ignore = [
 # Lazy imports, each for an optional dependency or to keep `import visin_fusion` light
 "visin_fusion/__init__.py" = ["PLC0415"]  # run() loads the pipeline (torch) on first use
 "visin_fusion/data/visin_datasets.py" = ["PLC0415"]  # the optional visin extra
+"visin_fusion/hub.py" = ["PLC0415"]  # the optional hf and visin extras
 "visin_fusion/engine/callbacks.py" = ["PLC0415"]  # the optional visin extra
 "visin_fusion/integrations/settings.py" = ["PLC0415"]  # python-dotenv, from the visin extra
 "visin_fusion/logging_setup.py" = ["PLC0415"]  # visin's console logging, if installed
@@ -96,6 +98,8 @@ files = [
   "visin_fusion/config",
   "visin_fusion/models",
   "visin_fusion/inference.py",
+  "visin_fusion/hub.py",
+  "visin_fusion/data/hf_datasets.py",
   "visin_fusion/pipeline.py",
   "visin_fusion/data/preprocessing.py",
 ]

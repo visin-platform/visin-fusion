@@ -55,6 +55,7 @@ nav:
       - Running: running.md
       - Metrics: metrics.md
       - Visin reporting: visin.md
+      - Hugging Face: hub.md
   - Models:
       - Compare models: models.md
       - CLFT: architecture/CLFT.md

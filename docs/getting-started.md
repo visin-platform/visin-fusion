@@ -82,7 +82,7 @@ visin-fusion run -c my_config.json
 visin-fusion predict --checkpoint logs/my_dataset/checkpoints/<best>.pth --input /data/new_images/camera --output predictions/
 ```
 
-`predict` writes a class-index mask and an overlay per image; [Use a trained model](library.md#use-a-trained-model) shows the Python API.
+`predict` writes a class-index mask and an overlay per image (`--checkpoint hf://org/name` reads a model from [Hugging Face](hub.md)); [Use a trained model](library.md#use-a-trained-model) shows the Python API.
 
 The pieces that people most often get wrong:
 

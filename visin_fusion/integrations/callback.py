@@ -19,6 +19,7 @@ class VisinCallback(Callback):
     """Reports a run's epochs, test results, visualizations and benchmarks to Visin."""
 
     def __init__(self, config=None):
+        service.prepare_environment()
         self.config = config
         self.run = None
 

@@ -11,6 +11,7 @@ with its exit code.
     visin-fusion run -c config.json --upload                 # send visualizations to Visin
     visin-fusion quickstart                                  # the whole pipeline on a bundled sample
     visin-fusion predict --checkpoint model.pth --input camera/ --output out/   # masks for new images
+    visin-fusion space --model hf://org/name --space org/name-demo   # a browser demo on Hugging Face
 
 With --output-dir (or FUSION_OUTPUT_DIR), a relative Log.logdir is placed under it, so a
 container can keep every run's logs and checkpoints on a mounted volume.
@@ -30,6 +31,7 @@ from visin_fusion.logging_setup import configure_logging
 from visin_fusion.pipeline import STAGES, StageFailed
 from visin_fusion.pipeline import run as run_pipeline
 from visin_fusion.sample import QUICKSTART_CONFIG
+from visin_fusion.space import publish_space
 from visin_fusion.utils.helpers import replace_camera_folder
 
 
@@ -88,7 +90,11 @@ def predict(argv=None):
     in the ``lidar_png`` folder beside the ``camera`` folder.
     """
     parser = argparse.ArgumentParser(prog="visin-fusion predict", description=predict.__doc__.split("\n\n")[0])
-    parser.add_argument("--checkpoint", required=True, help="a checkpoint written by the train stage")
+    parser.add_argument(
+        "--checkpoint",
+        required=True,
+        help="a checkpoint written by the train stage, or a Hub model: hf://org/name[@commit]",
+    )
     parser.add_argument("-c", "--config", help="the training config, for checkpoints from before model_info")
     parser.add_argument("--input", required=True, help="a camera image or a folder of them")
     parser.add_argument("--lidar-dir", help="folder of LiDAR projections named like the camera images")
@@ -101,8 +107,11 @@ def predict(argv=None):
     if not images:
         sys.exit(f"No images in {args.input}")
     try:
-        predictor = Predictor.from_checkpoint(args.checkpoint, config=args.config, device=args.device)
-    except (ValueError, FileNotFoundError) as e:
+        if args.checkpoint.startswith("hf:"):
+            predictor = Predictor.from_pretrained(args.checkpoint, config=args.config, device=args.device)
+        else:
+            predictor = Predictor.from_checkpoint(args.checkpoint, config=args.config, device=args.device)
+    except (ValueError, FileNotFoundError, ImportError) as e:
         sys.exit(f"{args.checkpoint}: {e}")
     lidars = _lidar_paths(images, predictor, args.lidar_dir)
 
@@ -172,8 +181,22 @@ def dataset(argv=None):
     return tools[args[0]](args[1:])
 
 
+def space(argv=None):
+    """Create a Hugging Face Space where anyone can try a published model in the browser."""
+    parser = argparse.ArgumentParser(prog="visin-fusion space", description=space.__doc__)
+    parser.add_argument("--model", required=True, help="the published model, hf://org/name[@commit]")
+    parser.add_argument("--space", required=True, help="the Space to create, org/name")
+    parser.add_argument("--private", action="store_true", help="make the Space private (default: public)")
+    args = parser.parse_args(argv)
+    try:
+        url = publish_space(args.model, args.space, private=args.private)
+    except (ValueError, ImportError) as e:
+        sys.exit(f"{args.model}: {e}")
+    print(url)
+
+
 def main(argv=None):
-    """Dispatch ``visin-fusion <command>``: run, quickstart, predict, dataset or schema (``--help`` lists them)."""
+    """Dispatch ``visin-fusion <command>``: run, quickstart, predict, space, dataset or schema (see ``--help``)."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == "schema":
         if len(args) != 1:
@@ -184,7 +207,8 @@ def main(argv=None):
     usage = (
         "usage: visin-fusion quickstart | visin-fusion run -c CONFIG [options] "
         "| visin-fusion predict --checkpoint FILE --input PATH "
-        "--output DIR | visin-fusion dataset manifest|project-lidar|stats|preview | visin-fusion schema"
+        "--output DIR | visin-fusion space --model hf://org/name --space org/name-demo "
+        "| visin-fusion dataset manifest|project-lidar|stats|preview | visin-fusion schema"
     )
     if not args or args[0] in ("-h", "--help"):
         print(usage)
@@ -192,6 +216,8 @@ def main(argv=None):
     command = args.pop(0)
     if command == "predict":
         return predict(args)
+    if command == "space":
+        return space(args)
     if command == "quickstart":
         return quickstart(args)
     if command == "dataset":

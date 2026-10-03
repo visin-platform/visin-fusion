@@ -63,6 +63,8 @@ Training settings.
 | `source_classes` | list (optional) |  | The classes model_path was trained on |
 | `callbacks` | list of str |  | Callback classes to load in every stage, as "package.module:ClassName", built with the config |
 | `create_new_training` | bool | `False` | Start a new Visin run even when resuming |
+| `hub_repo` | str (optional) |  | Hugging Face model repo (org/name) the best checkpoint is published to when training ends; empty publishes nothing. Needs the hf extra and your own HF_TOKEN |
+| `hub_private` | bool | `True` | Create hub_repo as a private repo; false makes it public |
 
 ## Log
 

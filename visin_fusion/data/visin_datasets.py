@@ -10,29 +10,35 @@ the size Visin reports), later runs use the local copy. Or beforehand, with the 
     visin datasets
     visin download zod
 
-The dataset service is VISIN_DATASET_URL, by default this project's deployment below. Datasets go to
+The dataset service is VISIN_DATASET_URL, required for visin: roots. Datasets go to
 VISIN_DATA_DIR, by default ~/.cache/visin/datasets (the image sets /data).
 """
 
+from __future__ import annotations
+
 import os
 import sys
+from typing import Any
+
+from visin_fusion.integrations.settings import load_environment
 
 PREFIX = "visin:"
-# The dataset service this project uses unless VISIN_DATASET_URL says otherwise; the visin package
-# has no default address, on purpose (like VISIN_URL in visin_fusion/integrations/visin.py)
-DEFAULT_DATASET_URL = "https://dataset-api.visin.eu"
 
 
-def resolve_root(root):
+def resolve_root(root: Any) -> Any:
     """``dataset_root`` as a local folder: ``visin:<name or id>`` is downloaded (once), anything else
     is returned as it is."""
     if not (isinstance(root, str) and root.startswith(PREFIX)):
         return root
+    load_environment()
+    url = os.environ.get("VISIN_DATASET_URL")
+    if not url:
+        raise ValueError("A visin: dataset requires VISIN_DATASET_URL; set it in VISIN_ENV_FILE or the environment")
     try:
         import visin
     except ImportError as exc:
         raise ImportError("A visin: dataset needs pip install visin-fusion[visin]") from exc
 
     visin.enable_console_logging(stream=sys.stdout)  # the download's progress, in order with the stage's
-    with visin.Datasets(url=os.environ.get("VISIN_DATASET_URL") or DEFAULT_DATASET_URL) as datasets:
+    with visin.Datasets(url=url) as datasets:
         return str(datasets.download(root[len(PREFIX) :]))

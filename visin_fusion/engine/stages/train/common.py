@@ -22,6 +22,7 @@ from visin_fusion.engine.callbacks import RunEnd, RunStart, configured_callbacks
 from visin_fusion.engine.epoch_ids import training_uuid_for_run
 from visin_fusion.engine.metrics_calculator import MetricsCalculator
 from visin_fusion.engine.training_engine import TrainingEngine
+from visin_fusion.hub import push_best_checkpoint
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.models.registry import from_config, training_setup
 from visin_fusion.utils.helpers import (
@@ -176,6 +177,7 @@ def main(argv=None):
         events.emit(RunEnd(config=config, error=error))
         raise
     else:
+        push_best_checkpoint(config)
         events.emit(RunEnd(config=config))
 
 

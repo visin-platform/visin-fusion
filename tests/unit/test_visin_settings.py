@@ -74,7 +74,7 @@ def test_importing_the_integration_changes_no_environment(tmp_path):
         "import os; os.environ['VISIN_TOKEN'] = 'x'; os.environ.pop('VISIN_URL', None);"
         "import visin_fusion.integrations.visin as v;"
         "print(os.environ.get('VISIN_URL'), os.environ.get('VISIN_MARKER'));"
-        "v.prepare_environment();"
+        "os.environ['VISIN_URL'] = 'https://vision.example.test';v.prepare_environment();"
         "print(os.environ.get('VISIN_URL'), os.environ.get('VISIN_MARKER'))"
     )
     env = {k: val for k, val in os.environ.items() if not k.startswith("VISIN_")}
@@ -83,4 +83,4 @@ def test_importing_the_integration_changes_no_environment(tmp_path):
     )
     before, after = out.stdout.splitlines()[-2:]
     assert before == "None None"
-    assert after == "https://vision-api.visin.eu loaded"
+    assert after == "https://vision.example.test loaded"

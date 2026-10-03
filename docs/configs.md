@@ -132,6 +132,7 @@ Each is a few lines on top of a preset or an example config:
 | Log to my own tools | `"General": {"callbacks": ["my_package.tracking:Tracking"]}`; see [Callbacks](running.md#callbacks) |
 | Train with a larger effective batch than fits | `"General": {"batch_size": 2, "accumulate_batches": 8}` steps once per 8 batches, as a batch of 16 |
 | Fit a smaller GPU | `"General": {"batch_size": 2}` |
+| Publish the best checkpoint to Hugging Face | `"General": {"hub_repo": "org/name"}`; see [Hugging Face](hub.md) |
 | Train longer | `"General": {"epochs": 100, "early_stop_patience": 20}` |
 | Start from pretrained weights | `"CLFTv2": {"pretrained": true}` (use the model's own section; needs a download or cached weights) |
 | Keep runs apart | a new `"Log": {"logdir": "logs/run2"}` for each experiment |

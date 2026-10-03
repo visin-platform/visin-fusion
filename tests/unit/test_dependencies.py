@@ -9,7 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "visin_fusion"
-OPTIONAL = {"visin", "dotenv"}
+OPTIONAL = {"visin", "dotenv", "huggingface_hub"}
 DISTRIBUTIONS = {"PIL": "pillow", "cv2": "opencv-python", "GPUtil": "gputil", "pynvml": "nvidia-ml-py"}
 
 
