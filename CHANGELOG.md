@@ -10,6 +10,15 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+### Added
+
+- use latest visin package
+- read and publish Hugging Face models and datasets
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/visin-platform/visin-fusion/compare/v0.3.0...v0.4.0
 ## [0.3.0] - 2026-10-02
 
 ### Added
@@ -20,7 +29,6 @@ one, together with anything written by hand under Unreleased.
 
 - set coverage precision to 2 decimal points
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/visin-platform/visin-fusion/compare/v0.2.0...v0.3.0
 ## [0.2.0] - 2026-10-01
 
