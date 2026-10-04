@@ -111,6 +111,19 @@ class General(Strict):
         "empty publishes nothing. Needs the hf extra and your own HF_TOKEN",
     )
     hub_private: bool = Field(True, description="Create hub_repo as a private repo; false makes it public")
+    suite: str | None = Field(
+        None,
+        pattern=r"^[a-z0-9][a-z0-9-]*@[1-9][0-9]*$",
+        description="Visin suite version, slug@version, the test stage records its results on as an evaluation "
+        "of the tested checkpoint; empty records none. Needs a Visin that has suites, and a visin package "
+        "that has evaluate",
+    )
+    suite_file: str | None = Field(
+        None,
+        description="The Visin suite file (JSON, or YAML with visin[yaml]) the test stage scores against. Its digest "
+        "is sent as the protocol that ran, together with the digest of the test sets' frame lists, which marks the "
+        "evaluation observed rather than reported; its slug@version is used when suite is empty",
+    )
 
 
 class Log(Strict):

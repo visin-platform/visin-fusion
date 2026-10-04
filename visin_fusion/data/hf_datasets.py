@@ -18,10 +18,11 @@ import logging
 import re
 
 from visin_fusion.hub import HubRef, huggingface_module, parse_ref
+from visin_fusion.providers import HUB
 
 logger = logging.getLogger(__name__)
 
-PREFIX = "hf:"
+PREFIX = f"{HUB}:"
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 

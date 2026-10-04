@@ -16,6 +16,28 @@ from visin_fusion.utils.helpers import sanitize_for_json
 logger = logging.getLogger(__name__)
 
 
+class TestResults(dict):
+    """A checkpoint's test results, which also remember how many frames each test set scored.
+
+    A plain ``dict`` of test set -> scores to everything that saves or sends it; ``sample_counts`` and ``splits`` (the
+    frame-list file each test set was read from) ride beside it rather than inside, since a key in the results would be
+    read as one more test set.
+    """
+
+    __test__ = False
+
+    def __init__(
+        self,
+        *args,
+        sample_counts: dict[str, int] | None = None,
+        splits: dict[str, str] | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.sample_counts: dict[str, int] = dict(sample_counts or {})
+        self.splits: dict[str, str] = dict(splits or {})
+
+
 def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args):
     """
     Test a single checkpoint and save/send results to Vision API.
@@ -67,7 +89,16 @@ def test_checkpoint_and_save(checkpoint_path, test_function, config, *test_args)
     logger.info("Test UUID: %s", test_uuid)
 
     configured_callbacks(config).emit(
-        TestEnd(config=config, epoch=epoch_num, epoch_uuid=epoch_uuid, results=checkpoint_results, test_uuid=test_uuid)
+        TestEnd(
+            config=config,
+            epoch=epoch_num,
+            epoch_uuid=epoch_uuid,
+            results=checkpoint_results,
+            test_uuid=test_uuid,
+            checkpoint_path=str(checkpoint_path),
+            sample_counts=getattr(checkpoint_results, "sample_counts", None) or None,
+            splits=getattr(checkpoint_results, "splits", None) or None,
+        )
     )
 
     # Return checkpoint data

@@ -28,6 +28,7 @@ from typing import Any
 
 import torch
 
+from visin_fusion.providers import HUB
 from visin_fusion.utils.helpers import get_best_checkpoint_path
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class HubRef:
 
 def parse_ref(ref: str) -> HubRef:
     """``hf://org/name[@revision][/path/in/repo]`` as a :class:`HubRef`; the ``hf://`` (or ``hf:``) is optional."""
-    text = ref.removeprefix("hf:").removeprefix("//").strip("/")
+    text = ref.removeprefix(f"{HUB}:").removeprefix("//").strip("/")
     org, _, rest = text.partition("/")
     name, _, filename = rest.partition("/")
     name, _, revision = name.partition("@")

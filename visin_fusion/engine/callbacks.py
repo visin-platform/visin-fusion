@@ -48,13 +48,21 @@ class Checkpoint:
 
 @dataclass(frozen=True)
 class TestEnd:
-    """A checkpoint was tested; ``results`` maps each test set (and ``overall``) to its scores."""
+    """A checkpoint was tested; ``results`` maps each test set (and ``overall``) to its scores.
+
+    ``checkpoint_path`` is the file that was tested and ``sample_counts`` how many frames each test set scored:
+    what an evaluation needs to say which weights were scored and on how much data. ``splits`` maps each test set to
+    the frame-list file it was read from, which is what identifies the data that was scored.
+    """
 
     config: Mapping
     epoch: int
     epoch_uuid: str | None
     results: Mapping
     test_uuid: str | None = None
+    checkpoint_path: str | None = None
+    sample_counts: Mapping[str, int] | None = None
+    splits: Mapping[str, str] | None = None
 
     __test__ = False
 

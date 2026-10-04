@@ -20,7 +20,7 @@ from visin_fusion.config.config import load_config
 from visin_fusion.config.splits import test_splits
 from visin_fusion.data.dataset_png import DatasetPNG
 from visin_fusion.engine.metrics_calculator import MetricsCalculator
-from visin_fusion.engine.test_aggregator import test_checkpoint_and_save
+from visin_fusion.engine.test_aggregator import TestResults, test_checkpoint_and_save
 from visin_fusion.engine.testing_engine import TestingEngine
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.models.registry import from_config
@@ -64,7 +64,7 @@ def test_checkpoint(checkpoint, config, device):
     metrics = MetricsCalculator(config, calculate_num_eval_classes(config), find_overlap_exclude_bg_ignore)
     tester = TestingEngine(model, metrics, config, device)
 
-    results = {}
+    results = TestResults()
     for name, split in test_splits(config).items():
         logger.info("\nTesting on %s: %s", name, split)
         dataset = DatasetPNG(config, "test", split)
@@ -79,6 +79,8 @@ def test_checkpoint(checkpoint, config, device):
             pin_memory=True,
         )  # every frame: no drop_last
         results[name], _ = tester.test(loader, config["CLI"]["mode"], num_classes)
+        results.sample_counts[name] = len(dataset)
+        results.splits[name] = split
     if not results:
         raise RuntimeError("no test set had any frames")
 
@@ -97,10 +99,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("-c", "--config", required=True, help="config file")
     parser.add_argument("--checkpoint", help="checkpoint to test (default: the best in Log.logdir)")
+    parser.add_argument(
+        "--suite",
+        help="record the results as an evaluation on this Visin suite version, slug@version (General.suite)",
+    )
+    parser.add_argument(
+        "--suite-file",
+        help="the Visin suite file to score against, so the evaluation says which protocol ran (General.suite_file)",
+    )
     args = parser.parse_args(argv)
     configure_logging()
 
     config = load_config(args.config)
+    if args.suite:
+        config["General"]["suite"] = args.suite
+    if args.suite_file:
+        config["General"]["suite_file"] = args.suite_file
     set_seed(config["General"]["seed"])
     checkpoint = args.checkpoint or get_checkpoint_path_with_fallback(config)
     if not checkpoint:

@@ -3,7 +3,8 @@
 Every script in this project reports through the functions here:
 
     engine/stages/train       start_training_run()     the run; the training engine logs each epoch to it
-    engine/stages/test        report_test_results()    a test result on the tested checkpoint's epoch
+    engine/stages/test        report_evaluation()      the tested checkpoint's results on a Visin suite, if one is set
+                              report_test_results()    else a test result (an evaluation with no suite) on its epoch
     engine/stages/benchmark   report_benchmark()       a benchmark on the measured checkpoint's epoch
     engine/stages/visualize   attach_to_training() and visualization_uploader.queue_visualizations()
 
@@ -39,10 +40,12 @@ try:
 except ImportError as exc:  # pragma: no cover - an environment problem, stated plainly
     raise ImportError("visin-fusion reports to Visin through the visin package: pip install visin") from exc
 
+from visin_fusion._version import __version__
 from visin_fusion.engine.epoch_ids import (
     training_uuid_for_epoch,
     training_uuid_for_run,
 )
+from visin_fusion.providers import HUB
 from visin_fusion.utils.helpers import get_training_uuid_from_logs
 
 logger = logging.getLogger(__name__)
@@ -86,7 +89,7 @@ def _dataset_reference(root: str | None, name: str) -> str | dict[str, Any]:
         return name
     snapshot = HUB_SNAPSHOT.search(str(root))
     if snapshot:
-        return {"source": "hf", "name": f"{snapshot['org']}/{snapshot['name']}", "revision": snapshot["commit"]}
+        return {"source": HUB, "name": f"{snapshot['org']}/{snapshot['name']}", "revision": snapshot["commit"]}
     for directory in (Path(root), *Path(root).parents):
         marker = directory / ".visin-dataset.json"
         if marker.is_file():
@@ -175,6 +178,132 @@ def report_test_results(
     """
     with attach_to_training(config["Log"]["logdir"], epoch_uuid=epoch_uuid) as run:
         run.log_test_results(epoch, test_results, epoch_uuid=epoch_uuid, test_uuid=test_uuid)
+
+
+def report_evaluation(
+    config: dict[str, Any],
+    *,
+    epoch: int,
+    epoch_uuid: str | None,
+    results: dict[str, Any],
+    test_uuid: str | None,
+    checkpoint_path: str | None,
+    sample_counts: dict[str, int] | None,
+    splits: dict[str, str] | None = None,
+) -> bool:
+    """Record a tested checkpoint's results as an evaluation on ``General.suite``, when one is set.
+
+    A test result says what an epoch scored; this says what the checkpoint scored on a suite, which is what Visin
+    can rank, and Visin keeps one record of a test, so the caller sends a plain test result only when this returns
+    false. The checkpoint is named by the digest of its weights and the evaluation by ``test_uuid``,
+    so repeating the upload is harmless. ``sample_counts`` is how many frames each test set scored: a suite pins
+    those, and a test set that was skipped because it listed no frames leaves the result unranked, with the reason
+    on the evaluation.
+
+    To be ranked the evaluation also says what ran. ``General.suite_file`` is the suite file the test stage was run
+    against: Visin computes its digest and it is sent as the protocol that ran (``suite`` defaults to the file's
+    ``slug@version``). ``splits`` maps each test set to its frame-list file, and the digest of those lists is sent as
+    the data that was scored, so a changed test set is refused as a different measurement even when the frame counts
+    agree. Without ``suite_file`` the result is still ranked, as reported rather than observed, and the log says so.
+
+    Returns whether an evaluation was recorded or kept for ``visin sync``. Refused evaluations (an unknown suite, no
+    access) are logged and do not fail the test stage: the results are already saved locally, and the caller sends
+    them as a plain test result instead. Needs a ``visin`` package that has ``evaluate``.
+    """
+    general = config.get("General") or {}
+    suite_file = general.get("suite_file")
+    suite = general.get("suite") or (_suite_of(suite_file) if suite_file else None)
+    if not suite:
+        return False
+    if not hasattr(visin, "evaluate"):
+        logger.warning("General.suite is set, but this visin cannot record evaluations; pip install -U visin")
+        return False
+    if not checkpoint_path:
+        logger.warning("General.suite is set, but the tested checkpoint is not known; no evaluation recorded")
+        return False
+    if not suite_file:
+        logger.warning(
+            "General.suite_file is not set: the evaluation cannot say which protocol or data ran, so it is ranked "
+            "as reported rather than observed"
+        )
+    prepare_environment()
+    training_uuid = training_uuid_for_epoch(config["Log"]["logdir"], epoch_uuid) if epoch_uuid else None
+    try:
+        evaluation = visin.evaluate(
+            results,
+            suite=suite,
+            checkpoint=visin.local_checkpoint(checkpoint_path, f"{config['CLI']['backbone']}-epoch-{epoch}"),
+            sample_counts=sample_counts,
+            run=training_uuid,
+            epoch=epoch,
+            epoch_uuid=epoch_uuid,
+            evaluator={"package": "visin-fusion", "version": __version__},
+            data=_scored_data(config, suite_file, splits),
+            protocol=suite_file or None,
+            uuid=test_uuid,
+        )
+    except visin.VisinError as exc:
+        logger.warning("Visin did not record the evaluation on %s: %s", suite, exc)
+        return False
+    logger.info("Visin evaluation on %s: %s", suite, evaluation.verdict or "kept to send with `visin sync`")
+    return bool(evaluation.stored or evaluation.queued)
+
+
+def _read_suite(path: str) -> dict[str, Any] | None:
+    """The suite file as a dict, or ``None`` when it cannot be read or this visin cannot read suites."""
+    if not hasattr(visin, "load_suite"):
+        return None
+    try:
+        return visin.load_suite(path)
+    except visin.VisinError as exc:
+        logger.warning("General.suite_file %s could not be read: %s", path, exc)
+        return None
+
+
+def _suite_of(path: str) -> str | None:
+    """``slug@version`` of a suite file, or ``None`` when it cannot be read."""
+    loaded = _read_suite(path)
+    if not loaded:
+        return None
+    return f"{loaded.get('slug')}@{loaded.get('version')}" if loaded.get("slug") and loaded.get("version") else None
+
+
+def _manifest_evidence(config: dict[str, Any], splits: dict[str, str] | None) -> dict[str, str] | None:
+    """The digest of every test set's frame list, by test set name: the data of a suite pinned by a manifest."""
+    if not splits or not hasattr(visin, "manifest_digest"):
+        return None
+    try:
+        conditions = {name: visin.read_split(path) for name, path in splits.items()}
+    except visin.VisinError as exc:
+        logger.warning("The test sets' frame lists could not be read, so the data is not reported: %s", exc)
+        return None
+    return {"kind": "external", "manifestSha256": visin.manifest_digest(conditions)}
+
+
+def _hub_evidence(config: dict[str, Any], splits: dict[str, str] | None) -> dict[str, str] | None:
+    """The Hub repo and full commit the dataset root resolved to: the data of a suite pinned to a Hub dataset."""
+    reference = _dataset_reference(config.get("Dataset", {}).get("dataset_root"), "")
+    if isinstance(reference, dict) and reference.get("source") == HUB and reference.get("revision"):
+        return {"kind": HUB, "repo": reference["name"], "commit": reference["revision"]}
+    return None
+
+
+_DATA_EVIDENCE = {"external": _manifest_evidence, HUB: _hub_evidence}
+
+
+def _scored_data(
+    config: dict[str, Any], suite_file: str | None, splits: dict[str, str] | None
+) -> dict[str, str] | None:
+    """What was scored, in the shape the suite pins it: read from the suite file, never assumed to be a frame list.
+
+    ``_DATA_EVIDENCE`` says what fusion can report for each kind of data a suite can pin; a new kind adds one entry.
+    A kind fusion cannot observe is absent (a Visin dataset's archive digest is not known to the evaluator), so the
+    evaluation is ``reported`` rather than refused as a different measurement.
+    """
+    loaded = _read_suite(suite_file) if suite_file else None
+    protocol = (loaded or {}).get("protocol") or loaded or {}
+    gather = _DATA_EVIDENCE.get((protocol.get("data") or {}).get("kind"))
+    return gather(config, splits) if gather else None
 
 
 def report_benchmark(

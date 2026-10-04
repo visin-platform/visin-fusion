@@ -54,7 +54,8 @@ visin-fusion quickstart
 ```
 
 The [pipeline guide](docs/running.md) covers configs, Docker, SLURM and individual stages. Add
-`.[visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](docs/visin.md).
+`.[visin]` and a Visin pipeline key to report runs; see the [Visin integration guide](docs/visin.md). To rank checkpoints
+on a written-down protocol, see [ranking on a suite](docs/evaluation.md).
 
 ## Tests
 

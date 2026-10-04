@@ -2,9 +2,11 @@
 
 from importlib import import_module
 
+from visin_fusion.providers import HUB
+
 _resolvers = {
     "visin": "visin_fusion.data.visin_datasets:resolve_root",
-    "hf": "visin_fusion.data.hf_datasets:resolve_root",
+    HUB: "visin_fusion.data.hf_datasets:resolve_root",
 }
 
 

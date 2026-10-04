@@ -65,6 +65,8 @@ Training settings.
 | `create_new_training` | bool | `False` | Start a new Visin run even when resuming |
 | `hub_repo` | str (optional) |  | Hugging Face model repo (org/name) the best checkpoint is published to when training ends; empty publishes nothing. Needs the hf extra and your own HF_TOKEN |
 | `hub_private` | bool | `True` | Create hub_repo as a private repo; false makes it public |
+| `suite` | str (optional) |  | Visin suite version, slug@version, the test stage records its results on as an evaluation of the tested checkpoint; empty records none. Needs a Visin that has suites, and a visin package that has evaluate |
+| `suite_file` | str (optional) |  | The Visin suite file (JSON, or YAML with visin[yaml]) the test stage scores against. Its digest is sent as the protocol that ran, together with the digest of the test sets' frame lists, which marks the evaluation observed rather than reported; its slug@version is used when suite is empty |
 
 ## Log
 

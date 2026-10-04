@@ -39,10 +39,27 @@ class VisinCallback(Callback):
             )
 
     def on_test_end(self, event: TestEnd) -> None:
-        """Report test results on the tested checkpoint's epoch."""
-        service.report_test_results(
-            event.config, event.epoch, event.epoch_uuid, event.results, test_uuid=event.test_uuid
+        """Report the tested checkpoint's results: on a suite when one is configured, else on its epoch.
+
+        Visin keeps one record of a test: an evaluation on the suite when ``General.suite`` names one, and
+        otherwise an evaluation with no suite (a test result), under the same ``test_uuid``. The two are not
+        sent together, since one test is one result. A suite that cannot be used (an older visin, a refusal) falls
+        back to the plain test result, so the numbers are never lost.
+        """
+        recorded = service.report_evaluation(
+            event.config,
+            epoch=event.epoch,
+            epoch_uuid=event.epoch_uuid,
+            results=dict(event.results),
+            test_uuid=event.test_uuid,
+            checkpoint_path=event.checkpoint_path,
+            sample_counts=dict(event.sample_counts) if event.sample_counts else None,
+            splits=dict(event.splits) if event.splits else None,
         )
+        if not recorded:
+            service.report_test_results(
+                event.config, event.epoch, event.epoch_uuid, event.results, test_uuid=event.test_uuid
+            )
 
     def on_visualization(self, event: Visualization) -> None:
         """Queue one rendered image for upload to the checkpoint's epoch."""

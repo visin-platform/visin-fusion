@@ -30,6 +30,7 @@ from visin_fusion.inference import Predictor, save_prediction
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.pipeline import STAGES, StageFailed
 from visin_fusion.pipeline import run as run_pipeline
+from visin_fusion.providers import HUB
 from visin_fusion.sample import QUICKSTART_CONFIG
 from visin_fusion.space import publish_space
 from visin_fusion.utils.helpers import replace_camera_folder
@@ -107,7 +108,7 @@ def predict(argv=None):
     if not images:
         sys.exit(f"No images in {args.input}")
     try:
-        if args.checkpoint.startswith("hf:"):
+        if args.checkpoint.startswith(f"{HUB}:"):
             predictor = Predictor.from_pretrained(args.checkpoint, config=args.config, device=args.device)
         else:
             predictor = Predictor.from_checkpoint(args.checkpoint, config=args.config, device=args.device)
