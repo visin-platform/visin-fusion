@@ -10,13 +10,24 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
+### Added
+
+- publish models to Visin and export them to ONNX with confidence maps
+
+### Fixed
+
+- type-check Visin model storage against SDKs that predate it
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/visin-platform/visin-fusion/compare/v0.5.0...v0.6.0
 ## [0.5.0] - 2026-10-04
 
 ### Added
 
 - add evaluation leaderboards with unified verification and simplify public config
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/visin-platform/visin-fusion/compare/v0.4.0...v0.5.0
 ## [0.4.0] - 2026-10-03
 
