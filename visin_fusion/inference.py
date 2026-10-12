@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -26,6 +27,7 @@ import torch
 from PIL import Image
 from torch.nn import functional as F
 
+from visin_fusion import stored_models
 from visin_fusion.config.config import load_config, prepare_config
 from visin_fusion.config.model_info import config_from_info, model_info
 from visin_fusion.data.preprocessing import ImageInput, Preprocessor
@@ -101,6 +103,12 @@ class Predictor:
         ``.pth``/``.pt`` file. The checkpoint is downloaded once into the Hub cache. A private repo needs your
         own ``HF_TOKEN``; the extra is ``pip install visin-fusion[hf]``.
         """
+        if ref.startswith(stored_models.SCHEME):
+            if revision or filename:
+                raise ValueError("Visin models are pinned by model id; revision and filename apply only to Hub models")
+            with tempfile.TemporaryDirectory(prefix="visin-model-") as folder:
+                path = stored_models.download_checkpoint(ref, folder)
+                return cls.from_checkpoint(path, config=config, device=device)
         found = parse_ref(ref)
         path = download_checkpoint(HubRef(found.repo, revision or found.revision, filename or found.filename))
         return cls.from_checkpoint(path, config=config, device=device)
@@ -117,16 +125,36 @@ class Predictor:
         return self.model(rgb_tensor, lidar_tensor)[0]
 
     @torch.inference_mode()
+    def _scores(self, rgb: ImageInput | None, lidar: ImageInput | None) -> torch.Tensor:
+        """Class scores ``[classes, H, W]`` at the size of the input image (bilinear from the model's)."""
+        size = _image_size(rgb if rgb is not None else lidar)
+        scores = self.logits(rgb, lidar)
+        return F.interpolate(scores[None], size=(size[1], size[0]), mode="bilinear", align_corners=False)[0]
+
+    @torch.inference_mode()
     def predict(self, rgb: ImageInput | None = None, lidar: ImageInput | None = None) -> np.ndarray:
         """The class index of every pixel as ``[H, W]`` uint8, at the size of the input image.
 
         ``rgb`` is needed for the ``rgb`` and fusion modes, ``lidar`` for the ``lidar`` and fusion modes.
         Values are the model's class indices (``class_names``), not the dataset's.
         """
-        size = _image_size(rgb if rgb is not None else lidar)
-        scores = self.logits(rgb, lidar)
-        scores = F.interpolate(scores[None], size=(size[1], size[0]), mode="bilinear", align_corners=False)[0]
-        return scores.argmax(dim=0).to(torch.uint8).cpu().numpy()
+        return self._scores(rgb, lidar).argmax(dim=0).to(torch.uint8).cpu().numpy()
+
+    @torch.inference_mode()
+    def probabilities(self, rgb: ImageInput | None = None, lidar: ImageInput | None = None) -> torch.Tensor:
+        """The probability of every class at every pixel as ``[classes, H, W]`` floats that sum to 1.
+
+        At the size of the input image, from the same scores :meth:`predict` takes its argmax of, so the most
+        probable class of a pixel is the class :meth:`predict` reports for it.
+        """
+        return self._scores(rgb, lidar).softmax(dim=0)
+
+    @torch.inference_mode()
+    def confidence(self, rgb: ImageInput | None = None, lidar: ImageInput | None = None) -> np.ndarray:
+        """How sure the model is of each pixel's class, as ``[H, W]`` uint8: ``round(255 * p)`` of the
+        predicted class's probability ``p``. Never below ``255 / classes``, which is a coin flip."""
+        top = self.probabilities(rgb, lidar).max(dim=0).values
+        return (top * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
 
     def colorize(self, mask: np.ndarray) -> np.ndarray:
         """A mask as an ``[H, W, 3]`` RGB image in the classes' colors."""
@@ -157,11 +185,20 @@ def _image_size(image: ImageInput | None) -> tuple[int, int]:
     return _as_image(image).size
 
 
-def save_prediction(predictor: Predictor, rgb: ImageInput | None, mask: np.ndarray, output: Path, stem: str) -> None:
-    """Write ``<stem>_mask.png`` and, with a camera image, ``<stem>_overlay.png``.
+def save_prediction(
+    predictor: Predictor,
+    rgb: ImageInput | None,
+    mask: np.ndarray,
+    output: Path,
+    stem: str,
+    confidence: np.ndarray | None = None,
+) -> None:
+    """Write ``<stem>_mask.png``, with a camera image ``<stem>_overlay.png``, and with ``confidence``
+    (from :meth:`Predictor.confidence`) ``<stem>_confidence.png``.
 
     The mask is a palette PNG: its pixel values are the class indices (read it back with ``np.array``),
-    and any image viewer shows it in the classes' colors instead of as near-black.
+    and any image viewer shows it in the classes' colors instead of as near-black. The confidence is an
+    8-bit grayscale PNG of ``round(255 * p)``.
     """
     output.mkdir(parents=True, exist_ok=True)
     indexed = Image.frombytes("P", (mask.shape[1], mask.shape[0]), np.ascontiguousarray(mask).tobytes())
@@ -169,3 +206,5 @@ def save_prediction(predictor: Predictor, rgb: ImageInput | None, mask: np.ndarr
     indexed.save(output / f"{stem}_mask.png")
     if rgb is not None:
         Image.fromarray(predictor.overlay(rgb, mask)).save(output / f"{stem}_overlay.png")
+    if confidence is not None:
+        Image.fromarray(confidence, mode="L").save(output / f"{stem}_confidence.png")

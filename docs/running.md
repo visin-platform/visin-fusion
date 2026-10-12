@@ -119,7 +119,7 @@ Every stage is one implementation for every model (`visin_fusion/engine/stages/<
 - **Test** evaluates the best checkpoint in `Log.logdir` (or `--checkpoint`) on every frame of every test
   set of the dataset, and averages the sets into `overall`. Results go to `<logdir>/test_results/`.
 - **Visualize** renders the best checkpoint's predictions on the visualization split (or `-p`) into
-  `<logdir>/visualizations/{segment,overlay,compare,correct_only}/`; `--upload` sends them to Visin.
+  `<logdir>/visualizations/{mask,segment,confidence,overlay,compare,correct_only}/`; `--upload` sends them to Visin.
 - **Benchmark** measures the model without trained weights; see below.
 
 Each exits non-zero when anything fails, so `visin-fusion run` and the SLURM jobs stop.
@@ -175,3 +175,88 @@ IMAGE=docker://ghcr.io/visin-platform/visin-fusion:latest sbatch slurms/run.slur
 
 On nodes without internet, set `VISIN_MODE=offline` and send the reports later with `visin sync`
 from a node that has it; download `visin:` datasets beforehand with `visin download <name>`.
+
+To train, evaluate on a suite, publish to Hugging Face and report to Visin as one chain of jobs, with the
+downloads and uploads done from the login node, see `slurms/hpc/README.md`.
+
+
+## Downloadable models on Visin
+
+Install the optional integration (`pip install -U 'visin-fusion[visin]'`), configure `VISIN_URL` and a
+project pipeline key in `VISIN_TOKEN`, and add these settings to your config:
+
+```json
+{
+  "General": {
+    "publish_model": "visin",
+    "model_license": "cc-by-4.0",
+    "model_credit": "Tallinn University of Technology (TalTech)"
+  }
+}
+```
+
+Training publishes its best checkpoint before closing the run. It retains an inference copy under
+`<logdir>/published/<checkpoint stem>/checkpoint.pth` with weights, `model_info`, and the epoch; optimizer
+and scheduler state remain in the training checkpoint. This inference file has one SHA-256 shared by
+its Visin download, suite evaluations, and ONNX exports. It survives checkpoint rotation. An unset
+licence produces a warning: the model can be stored but Visin refuses its download with 409.
+
+Offline runs copy the model into the SDK spool, so rotation cannot remove an unsent upload. This needs
+space for the training checkpoint, its inference copy, and the spool copy. `visin sync` sends staged
+files later; transient retries reuse the same reservation and claim. A slow upload that exceeds the
+run's finish timeout stays queued for sync.
+
+Load a published PyTorch model using its run UUID and model id:
+
+```python
+from visin_fusion.inference import Predictor
+
+predictor = Predictor.from_pretrained("visin://<run UUID>/<model id>", device="cpu")
+```
+
+The SDK checks project access and verifies the download's SHA-256 before PyTorch reads it. Public models
+need only `VISIN_URL`; private models also need an authorized credential. The same reference works in
+`visin-fusion predict --checkpoint visin://<run UUID>/<model id> --input camera/ --output predictions/`.
+
+## Confidence and output geometry
+
+`Predictor.probabilities()` returns class probabilities at the original image size. It resizes logits
+bilinearly, with `align_corners=False`, then applies softmax. `predict()` takes argmax of the same resized
+logits. `confidence()` encodes the maximum probability as an 8-bit image, `round(255 * p)`; request it from
+the command with `predict --confidence`. The mask is a palette PNG retaining class indices.
+
+The visualize stage writes matching `mask/`, `segment/`, and `confidence/` images at the original frame
+size. With `--upload`, each records its frame, dimensions, and confidence encoding in `metadata.prediction`.
+The dataset marker surrounding the supplied `--path` frame list identifies the prediction dataset, which
+can differ from the training dataset. Old or unmarked frame lists leave prediction provenance unknown.
+
+## ONNX export and parity
+
+Install `pip install 'visin-fusion[onnx]'` for the optional ONNX and CPU Runtime dependencies:
+
+```bash
+visin-fusion export --checkpoint logs/run/published/epoch_99/checkpoint.pth \
+  --format onnx --output model.onnx --frames sample/all.txt --dataset-root sample/
+```
+
+The graph includes softmax and outputs `[B, C, H, W]` probabilities. Inputs are named `rgb`, `lidar`, or
+both according to mode. The spatial size is static and comes from `model_info.transforms.resize`, with
+an optional `--size`; batch size is dynamic and the opset is 17. Metadata carries the model description,
+preprocessing, and source inference-file digest. Exporting a full training checkpoint first creates or
+reuses that same inference copy.
+
+Parity checks every supplied camera/LiDAR frame against PyTorch at the model's input size: maximum
+probability difference must be below `1e-4`, and differing argmax pixels at most `0.01%`. A failed check
+removes the export. Without a frame list, seeded synthetic inputs check the graph, with `parity.frames=0`;
+publishing requires an actual frame list. Add `--publish --run <run UUID> --licence cc-by-4.0 --credit TalTech`
+to save the ONNX file under the same checkpoint identity. This must be the run that produced the weights.
+
+To reproduce input-image decoding from ONNX, take log probabilities, resize them bilinearly to the frame,
+then softmax and argmax. Log probabilities equal logits up to a per-pixel common offset, so this preserves
+Predictor's decoder; directly resizing probabilities uses a different decoder. Float underflow to zero
+requires clipping to the smallest positive value before taking logs.
+
+CLFT and CLFTv2 are the initial supported targets. MaskFormer and Mask2Former may fail export because of
+model-specific attention operations. A single ONNX protobuf cannot hold 2 GiB or more of weights: exports
+requiring external tensor files are refused, rather than publishing a download missing those tensors.
+Use a smaller model; fp16 and multi-file packaging are not implemented.

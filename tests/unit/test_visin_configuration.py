@@ -54,3 +54,16 @@ def test_a_cache_folder_that_names_no_commit_is_only_a_label(tmp_path):
     root = tmp_path / "datasets--acme--zod-png" / "snapshots" / "main"
     root.mkdir(parents=True)
     assert integration._dataset_reference(str(root), "zod") == "zod"
+
+
+def test_training_keeps_the_archive_version_that_was_downloaded(tmp_path):
+    marker = tmp_path / ".visin-dataset.json"
+    marker.write_text(
+        json.dumps({"id": "iseauto", "name": "Iseauto", "revision": "old-archive", "file": "dataset.zip"})
+    )
+    ref = integration._dataset_reference(str(tmp_path), "local")
+    assert ref["archiveRevision"] == "old-archive"
+    marker.write_text(
+        json.dumps({"id": "iseauto", "name": "Iseauto", "revision": "revision", "archiveRevision": "explicit-archive"})
+    )
+    assert integration._dataset_reference(str(tmp_path), "local")["archiveRevision"] == "explicit-archive"

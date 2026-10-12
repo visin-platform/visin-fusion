@@ -359,3 +359,11 @@ class TestTheCallback:
             TestEnd(config=config(), epoch=1, epoch_uuid=None, results=RESULTS)
         )
         assert seen["sample_counts"] is None and seen["checkpoint_path"] is None and seen["splits"] is None
+
+
+def test_published_evaluation_uses_the_exact_inference_checkpoint_identity(fake, monkeypatch):
+    cfg = config()
+    cfg["General"]["publish_model"] = "visin"
+    monkeypatch.setattr(integration, "inference_checkpoint", lambda path: "logs/published/epoch_40/checkpoint.pth")
+    report(cfg)
+    assert fake.calls[0]["checkpoint"]["path"] == "logs/published/epoch_40/checkpoint.pth"

@@ -65,7 +65,9 @@ class VisinCallback(Callback):
         """Queue one rendered image for upload to the checkpoint's epoch."""
         if self.run is None:
             self.run = service.attach_to_training(event.config["Log"]["logdir"], epoch_uuid=event.epoch_uuid)
-        queue_visualizations(self.run, event.epoch, event.epoch_uuid, event.output_dir, event.image_name)
+        queue_visualizations(
+            self.run, event.epoch, event.epoch_uuid, event.output_dir, event.image_name, predicted_on=event.predicted_on
+        )
 
     def on_benchmark(self, event: Benchmark) -> None:
         """Report benchmark results, linked to the run they measured."""

@@ -57,7 +57,7 @@ jobs:
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -e '.[visin,dev]'
+          pip install -e '.[visin,dev,onnx]'
       - name: Types (mypy)
         if: matrix.python == '3.12'
         run: mypy
@@ -90,7 +90,7 @@ jobs:
       - name: Install (CPU torch)
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -e '.[visin,dev]'
+          pip install -e '.[visin,dev,onnx]'
       - name: Cache pretrained backbone weights
         uses: actions/cache@v4
         with:

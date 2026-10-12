@@ -26,6 +26,7 @@ from pathlib import Path
 
 from visin_fusion.config.config_schema import ConfigError, export_schema
 from visin_fusion.dataset_tools import dataset_stats, make_manifest, preview, project_lidar
+from visin_fusion.export import ExportError, export_onnx
 from visin_fusion.inference import Predictor, save_prediction
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.pipeline import STAGES, StageFailed
@@ -33,6 +34,7 @@ from visin_fusion.pipeline import run as run_pipeline
 from visin_fusion.providers import HUB
 from visin_fusion.sample import QUICKSTART_CONFIG
 from visin_fusion.space import publish_space
+from visin_fusion.stored_models import publish_export
 from visin_fusion.utils.helpers import replace_camera_folder
 
 
@@ -94,12 +96,17 @@ def predict(argv=None):
     parser.add_argument(
         "--checkpoint",
         required=True,
-        help="a checkpoint written by the train stage, or a Hub model: hf://org/name[@commit]",
+        help="a local checkpoint, hf://org/name[@commit], or visin://<run UUID>/<model id>",
     )
     parser.add_argument("-c", "--config", help="the training config, for checkpoints from before model_info")
     parser.add_argument("--input", required=True, help="a camera image or a folder of them")
     parser.add_argument("--lidar-dir", help="folder of LiDAR projections named like the camera images")
     parser.add_argument("--output", required=True, help="folder for <name>_mask.png and <name>_overlay.png")
+    parser.add_argument(
+        "--confidence",
+        action="store_true",
+        help="also write <name>_confidence.png: the probability of the predicted class, 8-bit",
+    )
     parser.add_argument("--device", help="torch device (default: cuda if available, else cpu)")
     args = parser.parse_args(argv)
 
@@ -108,7 +115,7 @@ def predict(argv=None):
     if not images:
         sys.exit(f"No images in {args.input}")
     try:
-        if args.checkpoint.startswith(f"{HUB}:"):
+        if args.checkpoint.startswith((f"{HUB}:", "visin://")):
             predictor = Predictor.from_pretrained(args.checkpoint, config=args.config, device=args.device)
         else:
             predictor = Predictor.from_checkpoint(args.checkpoint, config=args.config, device=args.device)
@@ -117,9 +124,11 @@ def predict(argv=None):
     lidars = _lidar_paths(images, predictor, args.lidar_dir)
 
     for index, (image, lidar) in enumerate(zip(images, lidars, strict=True), 1):
-        mask = predictor.predict(None if predictor.mode == "lidar" else image, lidar)
+        rgb = None if predictor.mode == "lidar" else image
+        mask = predictor.predict(rgb, lidar)
+        confidence = predictor.confidence(rgb, lidar) if args.confidence else None
         relative = image.relative_to(source).parent if source.is_dir() else Path()
-        save_prediction(predictor, image, mask, output / relative, image.stem)
+        save_prediction(predictor, image, mask, output / relative, image.stem, confidence)
         print(f"{index}/{len(images)}: {image.name}", flush=True)
     print(f"Wrote {len(images)} masks to {args.output}; classes: {', '.join(predictor.class_names)}")
 
@@ -154,6 +163,61 @@ def _lidar_paths(images, predictor, lidar_dir):
             sys.exit(f"No LiDAR projection for {image} (looked for {lidar}); use --lidar-dir to say where they are")
         lidars.append(lidar)
     return lidars
+
+
+def export(argv=None):
+    """Export one checkpoint to ONNX and compare its probabilities with PyTorch before offering it."""
+    parser = argparse.ArgumentParser(prog="visin-fusion export", description=export.__doc__)
+    parser.add_argument("--checkpoint", required=True, help="the local checkpoint or inference copy to export")
+    parser.add_argument("--format", choices=["onnx"], default="onnx")
+    parser.add_argument("--output", help="output file (default: checkpoint path with .onnx)")
+    parser.add_argument("--size", type=int, help="square input size (default: model_info.transforms.resize)")
+    parser.add_argument(
+        "--frames", type=Path, help="frame list used for parity; relative entries resolve under --dataset-root"
+    )
+    parser.add_argument("--dataset-root", type=Path, help="dataset folder (default: the frame list's folder)")
+    parser.add_argument("--publish", action="store_true", help="save the ONNX export in the checkpoint's Visin run")
+    parser.add_argument("--run", help="training UUID for --publish")
+    parser.add_argument("--licence", help="model licence id for --publish")
+    parser.add_argument("--credit", help="model attribution for --publish")
+    args = parser.parse_args(argv)
+    if args.size is not None and args.size < 1:
+        parser.error("--size must be positive")
+    if args.publish and (not args.run or not args.frames):
+        parser.error("--publish requires --run and --frames for parity on actual sample frames")
+    output = args.output or str(Path(args.checkpoint).with_suffix(".onnx"))
+    configure_logging()
+    try:
+        frames = _export_frames(args.frames, args.dataset_root)
+        result = export_onnx(args.checkpoint, output, frames=frames, size=args.size)
+        if args.publish:
+            publish_export(result, args.run, licence=args.licence, credit=args.credit)
+    except (ExportError, ValueError, FileNotFoundError, ImportError) as exc:
+        sys.exit(f"{args.checkpoint}: {exc}")
+    print(json.dumps(result, indent=2))
+
+
+def _export_frames(path, root):
+    """Frame pairs for parity, using the dataset marker/layout's conventional camera and lidar folders."""
+    if path is None:
+        return []
+    root = root or path.parent
+    frames = []
+    for line in path.read_text().splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        camera = Path(name)
+        if not camera.is_absolute():
+            camera = root / camera
+        try:
+            lidar = Path(replace_camera_folder(str(camera), "lidar_png"))
+        except ValueError:
+            lidar = None
+        frames.append((camera, lidar if lidar and lidar.is_file() else None))
+    if not frames:
+        raise ValueError("the parity frame list is empty")
+    return frames
 
 
 def quickstart(argv=None):
@@ -208,13 +272,16 @@ def main(argv=None):
     usage = (
         "usage: visin-fusion quickstart | visin-fusion run -c CONFIG [options] "
         "| visin-fusion predict --checkpoint FILE --input PATH "
-        "--output DIR | visin-fusion space --model hf://org/name --space org/name-demo "
+        "--output DIR | visin-fusion export --checkpoint FILE --format onnx --frames LIST [--publish] "
+        "| visin-fusion space --model hf://org/name --space org/name-demo "
         "| visin-fusion dataset manifest|project-lidar|stats|preview | visin-fusion schema"
     )
     if not args or args[0] in ("-h", "--help"):
         print(usage)
         return None
     command = args.pop(0)
+    if command == "export":
+        return export(args)
     if command == "predict":
         return predict(args)
     if command == "space":

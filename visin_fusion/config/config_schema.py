@@ -111,6 +111,15 @@ class General(Strict):
         "empty publishes nothing. Needs the hf extra and your own HF_TOKEN",
     )
     hub_private: bool = Field(True, description="Create hub_repo as a private repo; false makes it public")
+    publish_model: Literal["visin"] | None = Field(
+        None,
+        description="Store the best inference checkpoint in Visin when training ends; "
+        "needs the visin extra and an enabled run",
+    )
+    model_license: str | None = Field(
+        None, description="Licence id of a stored model, e.g. cc-by-4.0; unset models cannot be downloaded"
+    )
+    model_credit: str | None = Field(None, description="Attribution shown with the stored model")
     suite: str | None = Field(
         None,
         pattern=r"^[a-z0-9][a-z0-9-]*@[1-9][0-9]*$",

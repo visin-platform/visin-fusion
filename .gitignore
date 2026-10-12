@@ -42,3 +42,6 @@ paper_sam
 # Caller-owned credentials and package build metadata
 .env
 *.egg-info/
+
+# HPC credentials
+slurms/hpc/env.sh

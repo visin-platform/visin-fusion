@@ -46,6 +46,7 @@ from visin_fusion.engine.epoch_ids import (
     training_uuid_for_run,
 )
 from visin_fusion.providers import HUB
+from visin_fusion.stored_models import inference_checkpoint
 from visin_fusion.utils.helpers import get_training_uuid_from_logs
 
 logger = logging.getLogger(__name__)
@@ -99,8 +100,9 @@ def _dataset_reference(root: str | None, name: str) -> str | dict[str, Any]:
                     not isinstance(data.get(field), str) or not data[field].strip() for field in ("id", "name")
                 ):
                     raise ValueError("dataset marker needs an id and name")
-                if data.get("revision") is not None and not isinstance(data["revision"], str):
-                    raise ValueError("dataset marker revision must be a string")
+                for field in ("revision", "archiveRevision"):
+                    if data.get(field) is not None and not isinstance(data[field], str):
+                        raise ValueError(f"dataset marker {field} must be a string")
             except (OSError, ValueError) as exc:
                 logger.warning("Cannot read dataset provenance from %s (%s); using label %s", marker, exc, name)
                 return name
@@ -109,6 +111,13 @@ def _dataset_reference(root: str | None, name: str) -> str | dict[str, Any]:
                 "id": data["id"],
                 "name": data["name"],
                 **({"revision": data["revision"]} if data.get("revision") else {}),
+                **(
+                    {"archiveRevision": data["archiveRevision"]}
+                    if data.get("archiveRevision")
+                    else {"archiveRevision": data["revision"]}
+                    if data.get("file") and data.get("revision")
+                    else {}
+                ),
             }
     return name
 
@@ -232,7 +241,10 @@ def report_evaluation(
         evaluation = visin.evaluate(
             results,
             suite=suite,
-            checkpoint=visin.local_checkpoint(checkpoint_path, f"{config['CLI']['backbone']}-epoch-{epoch}"),
+            checkpoint=visin.local_checkpoint(
+                inference_checkpoint(checkpoint_path) if general.get("publish_model") == "visin" else checkpoint_path,
+                f"{config['CLI']['backbone']}-epoch-{epoch}",
+            ),
             sample_counts=sample_counts,
             run=training_uuid,
             epoch=epoch,

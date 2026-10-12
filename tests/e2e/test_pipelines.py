@@ -25,7 +25,7 @@ from visin_fusion.sample import SAMPLE_DIR
 REPO = Path(__file__).resolve().parents[2]
 SAMPLE = SAMPLE_DIR
 WEATHER_CONDITIONS = ["day_fair", "day_rain", "night_fair", "night_rain", "snow"]
-VISUALIZATION_KINDS = ["segment", "overlay", "compare", "correct_only"]
+VISUALIZATION_KINDS = ["mask", "segment", "confidence", "overlay", "compare", "correct_only"]
 STAGE_TIMEOUT = 30 * 60  # seconds; CPU runs of the larger models are slow
 
 
@@ -143,6 +143,8 @@ def test_pipeline(case, tmp_path, device, visin_mode):
     logdir.mkdir()
     spool_dir = tmp_path / "visin"
     config = make_config(model, mode, logdir, device)
+    if visin_mode == "offline":
+        config["General"].update(publish_model="visin", model_license="cc-by-4.0", model_credit="TalTech")
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config, indent=2))
     env = visin_env(visin_mode, spool_dir)
@@ -179,6 +181,16 @@ def test_pipeline(case, tmp_path, device, visin_mode):
     assert measured[0]["fps"] > 0
 
     if visin_mode == "offline":
+        from visin_fusion.stored_models import file_digest
+
+        ops = [json.loads(line) for line in (spool_dir / "runs" / f"{training_uuid}.jsonl").read_text().splitlines()]
+        published = [op for op in ops if op.get("op") == "model_file"]
+        assert len(published) == 1
+        inference = Path(only(logdir / "published" / "*" / "checkpoint.pth"))
+        assert published[0]["body"]["sha256"] == file_digest(inference)
+        assert published[0]["body"]["epoch"] == 0
+        staged = spool_dir / "runs" / f"{training_uuid}.files" / published[0]["staged"]
+        assert staged.is_file() and file_digest(staged) == file_digest(inference)
         check_offline_reports(spool_dir, training_uuid, frames)
     elif visin_mode == "online":
         check_online_reports(training_uuid)

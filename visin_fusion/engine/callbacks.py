@@ -76,6 +76,7 @@ class Visualization:
     epoch_uuid: str | None
     output_dir: str
     image_name: str
+    predicted_on: Mapping | None = None
 
 
 @dataclass(frozen=True)

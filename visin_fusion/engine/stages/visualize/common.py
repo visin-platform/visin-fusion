@@ -20,6 +20,7 @@ from visin_fusion.data.preprocessing import Preprocessor
 from visin_fusion.engine.callbacks import RunEnd, Visualization, configured_callbacks
 from visin_fusion.engine.epoch_ids import parse_checkpoint_name
 from visin_fusion.engine.visualizer import Visualizer
+from visin_fusion.integrations.visualization_uploader import prediction_dataset
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.models.registry import from_config
 from visin_fusion.utils.helpers import get_annotation_path, get_device, get_lidar_path, get_model_path
@@ -43,7 +44,7 @@ def load_model(config, checkpoint, device):
     return model.to(device).eval()
 
 
-def render(config, frames, model_path, output_dir, upload=False, epoch_uuid=None):
+def render(config, frames, model_path, output_dir, upload=False, epoch_uuid=None, *, predicted_on=None):
     """Render every frame; returns the number that failed."""
     device = get_device(config)
     model = load_model(config, model_path, device)
@@ -84,6 +85,7 @@ def render(config, frames, model_path, output_dir, upload=False, epoch_uuid=None
                 epoch_uuid=epoch_uuid,
                 output_dir=output_dir,
                 image_name=os.path.basename(cam_path),
+                predicted_on=predicted_on,
             )
         )
         queued += uploading and bool(events.callbacks)
@@ -116,7 +118,15 @@ def main(argv=None):
     logger.info("%s frames from %s", len(frames), frames_file)
 
     output_dir = args.output_dir or os.path.join(config["Log"]["logdir"].rstrip("/"), "visualizations")
-    failed = render(config, frames, model_path, output_dir, args.upload, args.epoch_uuid)
+    failed = render(
+        config,
+        frames,
+        model_path,
+        output_dir,
+        args.upload,
+        args.epoch_uuid,
+        predicted_on=prediction_dataset(frames_file),
+    )
     if failed:
         sys.exit(f"{failed} of {len(frames)} frames failed to render")
 

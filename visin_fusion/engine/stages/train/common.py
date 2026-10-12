@@ -25,6 +25,7 @@ from visin_fusion.engine.training_engine import TrainingEngine
 from visin_fusion.hub import push_best_checkpoint
 from visin_fusion.logging_setup import configure_logging
 from visin_fusion.models.registry import from_config, training_setup
+from visin_fusion.stored_models import publish_best_checkpoint
 from visin_fusion.utils.helpers import (
     calculate_num_classes,
     calculate_num_eval_classes,
@@ -178,6 +179,7 @@ def main(argv=None):
         raise
     else:
         push_best_checkpoint(config)
+        publish_best_checkpoint(config)
         events.emit(RunEnd(config=config))
 
 

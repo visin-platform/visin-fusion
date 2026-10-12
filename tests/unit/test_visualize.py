@@ -14,7 +14,7 @@ from visin_fusion.models.registry import from_config
 from visin_fusion.sample import SAMPLE_DIR
 
 SAMPLE = SAMPLE_DIR
-KINDS = ["segment", "overlay", "compare", "correct_only"]
+KINDS = ["mask", "segment", "confidence", "overlay", "compare", "correct_only"]
 
 
 @pytest.fixture

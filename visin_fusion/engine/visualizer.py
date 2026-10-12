@@ -9,8 +9,10 @@ import os
 import cv2
 import numpy as np
 import torch
+from PIL import Image
+from torch.nn import functional as F
 
-from visin_fusion.utils.helpers import draw_test_segmentation_map, relabel_annotation
+from visin_fusion.utils.helpers import relabel_annotation
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ class Visualizer:
         """Create output directories for visualizations."""
         self.dirs = {
             "segment": os.path.join(self.output_base, "segment"),
+            "mask": os.path.join(self.output_base, "mask"),
+            "confidence": os.path.join(self.output_base, "confidence"),
             "overlay": os.path.join(self.output_base, "overlay"),
             "compare": os.path.join(self.output_base, "compare"),
             "correct_only": os.path.join(self.output_base, "correct_only"),
@@ -45,9 +49,6 @@ class Visualizer:
             anno_path: Path to ground truth annotation
             idx: Image index for logging
         """
-        # Generate segmentation map (returns BGR format from config colors)
-        segmented_image = draw_test_segmentation_map(output_seg, self.config)
-
         # Load original image
         rgb_cv2 = cv2.imread(rgb_path)
         if rgb_cv2 is None:
@@ -61,8 +62,9 @@ class Visualizer:
 
         h, w = rgb_cv2.shape[:2]
 
-        # Resize segmentation to original dimensions
-        seg_resize_bgr = cv2.resize(segmented_image, (w, h), interpolation=cv2.INTER_NEAREST)
+        classes = self._save_class_outputs(output_seg, rgb_path, h, w, idx)
+        palette = np.asarray(self._palette(), dtype=np.uint8).reshape(-1, 3)
+        seg_resize_bgr = palette[classes][..., ::-1].copy()
 
         # Save segmentation (already in BGR)
         seg_path = self._get_output_path("segment", rgb_path)
@@ -78,6 +80,31 @@ class Visualizer:
         # Save comparison and correct_only if annotation exists
         if os.path.exists(anno_path):
             self._save_comparison(output_seg, seg_resize_bgr, rgb_cv2, rgb_path, anno_path, h, w, idx)
+
+    def _palette(self):
+        """The classes' colors in index order, flat RGB, for a palette PNG whose values are class indices."""
+        classes = sorted(self.config["Dataset"]["train_classes"], key=lambda c: c["index"])
+        return [channel for c in classes for channel in c["color"]]
+
+    def _save_class_outputs(self, output_seg, rgb_path, h, w, idx):
+        """Save ``mask`` (class index per pixel) and ``confidence`` (``round(255 * p)`` of that class).
+
+        Logits are resized bilinearly to input-image size before softmax and argmax, matching Predictor.
+        Segment colours, class masks, and confidence therefore describe the same pixels.
+        """
+        scores = output_seg.squeeze(0) if output_seg.dim() == 4 else output_seg
+        scores = F.interpolate(scores.detach().float().cpu()[None], size=(h, w), mode="bilinear", align_corners=False)[
+            0
+        ]
+        classes = scores.argmax(dim=0).numpy().astype(np.uint8)
+        certainty = (scores.softmax(dim=0).max(dim=0).values * 255).round().clamp(0, 255).to(torch.uint8).numpy()
+        indexed = Image.frombytes("P", (w, h), np.ascontiguousarray(classes).tobytes())
+        indexed.putpalette(self._palette(), rawmode="RGB")
+        logger.info("Saving mask result %s...", idx)
+        indexed.save(self._get_output_path("mask", rgb_path))
+        logger.info("Saving confidence result %s...", idx)
+        cv2.imwrite(self._get_output_path("confidence", rgb_path), certainty)
+        return classes
 
     def _save_comparison(self, output_seg, seg_resize, rgb_cv2, rgb_path, anno_path, h, w, idx):
         """Save comparison and correct_only visualizations."""
