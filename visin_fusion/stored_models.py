@@ -1,6 +1,8 @@
 """Inference checkpoints stored in Visin, with a stable file identity shared by exports and evaluations.
 
-The optional Visin SDK is loaded only when publishing or downloading. Full training checkpoints retain their
+The optional Visin SDK is loaded only when publishing or downloading. Model storage arrived after SDK 0.8.0, so
+the SDK is used as an untyped module here and its capability is probed with hasattr, which keeps the type check
+valid against both older and newer releases. Full training checkpoints retain their
 optimizer state; an inference copy beside the logs keeps only weights, model_info, and the epoch. Once created,
 it is reused rather than serialized again, since the SHA-256 names the actual published bytes.
 """
@@ -112,9 +114,10 @@ def download_checkpoint(ref: str, directory: str | Path) -> Path:
         import visin
     except ImportError as exc:
         raise ImportError(EXTRA_HINT) from exc
-    if not hasattr(visin.Api, "download_model"):
+    sdk: Any = visin
+    if not hasattr(sdk.Api, "download_model"):
         raise ImportError(EXTRA_HINT)
-    with visin.Api() as api:
+    with sdk.Api() as api:
         return Path(api.download_model(parts[0], model=parts[1], directory=directory, file_format="pth"))
 
 
@@ -126,11 +129,12 @@ def publish_export(
         import visin
     except ImportError as exc:
         raise ImportError(EXTRA_HINT) from exc
-    if not hasattr(visin.Run, "save_model"):
+    sdk: Any = visin
+    if not hasattr(sdk.Run, "save_model"):
         raise ImportError(EXTRA_HINT)
     if not result["parity"]["frames"]:
         raise ValueError("publishing an ONNX model requires parity on actual sample frames")
-    with visin.Run.attach(training_uuid, mark_status=False) as run:
+    with sdk.Run.attach(training_uuid, mark_status=False) as run:
         return run.save_model(
             result["path"],
             epoch=result["epoch"],
