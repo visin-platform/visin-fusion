@@ -10,6 +10,14 @@ one, together with anything written by hand under Unreleased.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-14
+
+### Added
+
+- stop training when values go non-finite, and choose the precision
+
+[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/visin-platform/visin-fusion/compare/v0.6.0...v0.7.0
 ## [0.6.0] - 2026-10-12
 
 ### Added
@@ -20,7 +28,6 @@ one, together with anything written by hand under Unreleased.
 
 - type-check Visin model storage against SDKs that predate it
 
-[Unreleased]: https://github.com/visin-platform/visin-fusion/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/visin-platform/visin-fusion/compare/v0.5.0...v0.6.0
 ## [0.5.0] - 2026-10-04
 
