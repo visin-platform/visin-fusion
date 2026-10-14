@@ -53,6 +53,8 @@ Training settings.
 | `batch_size` | int | **required** |  |
 | `seed` | int | `0` |  |
 | `accumulate_batches` | int | `1` | Batches whose gradients are averaged per optimizer step: effective batch size = batch_size x this |
+| `precision` | `fp16`, `bf16`, `fp32` (optional) |  | Training arithmetic on CUDA: fp16 mixed precision with loss scaling, bf16 mixed precision, or fp32. Empty keeps the model's default (fp16 for most models). Try bf16 or fp32 when a run goes NaN |
+| `max_nonfinite_batches` | int | `3` | Training batches with a non-finite loss or gradients that are skipped per epoch; one more stops the run, keeping the last good checkpoint. 0 stops at the first |
 | `num_workers` | int (optional) |  | DataLoader worker processes; 0 loads in the main process. Default: CPU count, at most 8 and at most one per batch |
 | `resume_training` | bool | `False` | Continue from the latest checkpoint in Log.logdir |
 | `reset_lr` | bool | `False` | When resuming, start the learning-rate schedule again |

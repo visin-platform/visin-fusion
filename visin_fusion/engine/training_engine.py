@@ -5,6 +5,7 @@ schedule, loss, gradient clipping, mixed precision) comes from visin_fusion/mode
 """
 
 import logging
+import math
 import os
 import time
 
@@ -20,6 +21,12 @@ from visin_fusion.utils.helpers import EarlyStopping, manage_checkpoints_by_miou
 from visin_fusion.utils.system_monitor import get_epoch_system_snapshot
 
 logger = logging.getLogger(__name__)
+
+AUTOCAST_DTYPES = {"fp16": torch.float16, "bf16": torch.bfloat16}
+
+
+class TrainingDiverged(RuntimeError):
+    """Training produced non-finite values that skipping a few batches does not cure."""
 
 
 class TrainingEngine:
@@ -39,8 +46,16 @@ class TrainingEngine:
         # TensorBoard logs beside the run's other logs, not in ./runs of whatever directory it started in
         self.writer = SummaryWriter(log_dir=os.path.join(log_dir, "tensorboard"))
         self.early_stopping = EarlyStopping(config)
-        self.mixed_precision = setup.mixed_precision and device.type == "cuda"
-        self.scaler = GradScaler("cuda", enabled=self.mixed_precision)
+        # General.precision overrides the model's default; autocast only exists on CUDA here
+        precision = config["General"].get("precision")
+        if precision is None:
+            precision = "fp16" if setup.mixed_precision else "fp32"
+        self.mixed_precision = precision != "fp32" and device.type == "cuda"
+        self.autocast_dtype = AUTOCAST_DTYPES.get(precision, torch.float16)
+        # bf16 has fp32's range and needs no loss scaling
+        self.scaler = GradScaler("cuda", enabled=self.mixed_precision and precision == "fp16")
+        self.max_nonfinite_batches = config["General"].get("max_nonfinite_batches", 3)
+        self.diverged = None  # why training was stopped early, once it was
 
     def _batch(self, batch):
         """Inputs and training labels on the device (labels relabelled on the CPU, then sent once)."""
@@ -50,18 +65,35 @@ class TrainingEngine:
         return rgb, lidar, labels
 
     def _loss(self, rgb, lidar, labels):
-        with autocast("cuda", enabled=self.mixed_precision):
+        with autocast("cuda", dtype=self.autocast_dtype, enabled=self.mixed_precision):
             outputs = self.model.raw_forward(rgb, lidar)
             segmap = self.model.segment_from_raw(outputs)
             return segmap, self.setup.loss(outputs, segmap, labels)
 
     def _optimizer_step(self):
-        """Unscale, clip, step and update the scaler for the gradients accumulated so far."""
-        if self.setup.clip_grad_norm is not None:
-            self.scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.setup.clip_grad_norm)
+        """Unscale, clip, step and update the scaler for the gradients accumulated so far.
+
+        Returns False when the gradients were not finite and nothing was stepped. With the scaler on, that is
+        its normal calibration and the scaler skips the step; without it (fp32, bf16) one bad step would put
+        NaN into the weights, so it is skipped here.
+        """
+        clip = self.setup.clip_grad_norm
+        self.scaler.unscale_(self.optimizer)
+        norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=math.inf if clip is None else clip)
+        if not self.scaler.is_enabled() and not torch.isfinite(norm):
+            return False
         self.scaler.step(self.optimizer)
         self.scaler.update()
+        return True
+
+    def _skip_batch(self, index, skipped, reason):
+        """Count a batch that cannot be trained on; raises TrainingDiverged past General.max_nonfinite_batches."""
+        logger.warning("Batch %s skipped: %s (%s skipped this epoch)", index, reason, skipped)
+        if skipped > self.max_nonfinite_batches:
+            raise TrainingDiverged(
+                f"{skipped} batches with non-finite values in one epoch "
+                f"(General.max_nonfinite_batches = {self.max_nonfinite_batches})"
+            )
 
     def train_epoch(self, dataloader, num_classes):
         """One training epoch; returns its metrics.
@@ -75,22 +107,35 @@ class TrainingEngine:
         total_loss = 0.0
         batches = len(dataloader)
         accumulate = max(1, self.config["General"].get("accumulate_batches", 1))
+        skipped = 0  # batches with a non-finite loss, or whose step had non-finite gradients
+        used = 0  # batches that count towards the metrics' average
+        pending = 0  # batches whose gradients wait for this group's optimizer step
         progress_bar = tqdm(dataloader)
         for index, batch in enumerate(progress_bar):
             group_start = index - index % accumulate
             group_size = min(accumulate, batches - group_start)
             if index == group_start:
                 self.optimizer.zero_grad(set_to_none=True)
+                pending = 0
             rgb, lidar, labels = self._batch(batch)
             segmap, loss = self._loss(rgb, lidar, labels)
-            self.metrics_calc.update_accumulators(accumulators, segmap, labels, num_classes)
-            total_loss += loss.item()
-
-            self.scaler.scale(loss / group_size).backward()
-            if index == group_start + group_size - 1:
-                self._optimizer_step()
-            progress_bar.set_description(f"Train loss: {loss:.4f}")
-        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, batches)
+            if torch.isfinite(loss):
+                self.metrics_calc.update_accumulators(accumulators, segmap, labels, num_classes)
+                total_loss += loss.item()
+                used += 1
+                self.scaler.scale(loss / group_size).backward()
+                pending += 1
+                progress_bar.set_description(f"Train loss: {loss:.4f}")
+            else:
+                skipped += 1
+                self._skip_batch(index, skipped, f"loss is {loss.item()}")
+            if index == group_start + group_size - 1 and pending and not self._optimizer_step():
+                # The batches counted above went into a step that was not taken: their gradients were not finite
+                skipped += pending
+                self._skip_batch(index, skipped, "gradients are not finite, optimizer step skipped")
+        if skipped:
+            logger.warning("%s of %s training batches skipped for non-finite values", skipped, batches)
+        return self.metrics_calc.compute_epoch_metrics(accumulators, total_loss, max(used, 1))
 
     def validate_epoch(self, dataloader, num_classes):
         """One validation epoch, with the training loss; returns its metrics."""
@@ -125,12 +170,19 @@ class TrainingEngine:
             logger.info("Epoch: %s, LR: %.6f", epoch, lr)
 
             logger.info("Training...")
-            train_metrics = self.train_epoch(train_dataloader, num_classes)
+            try:
+                train_metrics = self.train_epoch(train_dataloader, num_classes)
+            except TrainingDiverged as error:
+                self.diverged = f"epoch {epoch}: {error}"
+                break
             self.metrics_calc.print_metrics(train_metrics, prefix="Training ")
 
             logger.info("Validating...")
             val_metrics = self.validate_epoch(valid_dataloader, num_classes)
             self.metrics_calc.print_metrics(val_metrics, prefix="Validation ")
+            if not math.isfinite(val_metrics["epoch_loss"]):
+                self.diverged = f"epoch {epoch}: the validation loss is {val_metrics['epoch_loss']}"
+                break
             self._step_scheduler(val_metrics)
 
             epoch_time = time.time() - epoch_start_time
@@ -149,6 +201,16 @@ class TrainingEngine:
             self.early_stopping(-round(val_metrics["mean_iou"], 4), epoch, self.model, self.optimizer, epoch_uuid)
             if self.early_stopping.early_stop_trigger:
                 break
+
+        if self.diverged:
+            # The weights are not trustworthy, so they are not saved: the last epoch's checkpoint stays as it was
+            logger.error(
+                "Training stopped, %s. Not saving the current weights; the last good checkpoint (epoch %s) is kept",
+                self.diverged,
+                last_epoch,
+            )
+            self.writer.close()
+            return
 
         # The final checkpoint under the epoch it holds
         logger.info("Saving final model checkpoint...")

@@ -87,6 +87,17 @@ class General(Strict):
         ge=1,
         description="Batches whose gradients are averaged per optimizer step: effective batch size = batch_size x this",
     )
+    precision: Literal["fp16", "bf16", "fp32"] | None = Field(
+        None,
+        description="Training arithmetic on CUDA: fp16 mixed precision with loss scaling, bf16 mixed precision, "
+        "or fp32. Empty keeps the model's default (fp16 for most models). Try bf16 or fp32 when a run goes NaN",
+    )
+    max_nonfinite_batches: int = Field(
+        3,
+        ge=0,
+        description="Training batches with a non-finite loss or gradients that are skipped per epoch; "
+        "one more stops the run, keeping the last good checkpoint. 0 stops at the first",
+    )
     num_workers: int | None = Field(
         None,
         ge=0,

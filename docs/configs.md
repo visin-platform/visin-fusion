@@ -131,6 +131,8 @@ Each is a few lines on top of a preset or an example config:
 | Load data in the main process (debugging) or use fewer cores | `"General": {"num_workers": 0}` (default: the CPU count, at most 8 and at most one per batch) |
 | Log to my own tools | `"General": {"callbacks": ["my_package.tracking:Tracking"]}`; see [Callbacks](running.md#callbacks) |
 | Train with a larger effective batch than fits | `"General": {"batch_size": 2, "accumulate_batches": 8}` steps once per 8 batches, as a batch of 16 |
+| Find out whether fp16 causes NaN losses | `"General": {"precision": "bf16"}` (or `"fp32"`); the default is the model's own, fp16 for most |
+| Stop sooner when a run goes NaN | `"General": {"max_nonfinite_batches": 0}`; the default skips up to 3 bad batches per epoch, and a NaN validation loss always stops the run, keeping the last good checkpoint |
 | Fit a smaller GPU | `"General": {"batch_size": 2}` |
 | Publish the best checkpoint to Hugging Face | `"General": {"hub_repo": "org/name"}`; see [Hugging Face](hub.md) |
 | Train longer | `"General": {"epochs": 100, "early_stop_patience": 20}` |
